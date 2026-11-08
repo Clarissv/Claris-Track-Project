@@ -1,0 +1,14 @@
+Sepang centerline and left/right widths:
+TUMFTM/racetrack-database, tracks/Sepang.csv
+https://github.com/TUMFTM/racetrack-database
+The repository declares GNU LGPL v3; its LICENSE and original Sepang CSV are included.
+Source coordinates came from OpenStreetMap and widths from satellite images;
+see the repository README for its processing and accuracy limitations.
+
+Original horizontal alignment reference:
+User-supplied Sepang GLB from the original banked/elevated project.
+https://sketchfab.com/3d-models/sepang-international-circuit-2025-layout-590bf243480e43f18e588a3908daa4df
+The flat driving surface does not use the mesh elevation or banking.
+The original mesh/textures are not included. A frozen horizontal-layout reference,
+source hashes and transformations are recorded in source/sepang-reference.json
+and generation-report.json.

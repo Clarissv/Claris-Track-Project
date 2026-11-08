@@ -1,0 +1,6 @@
+node_modules/
+*.zip
+sepang-flat-checkpoint.json
+SepangFlat/
+source/protected-files.json
+setup-project.mjs
