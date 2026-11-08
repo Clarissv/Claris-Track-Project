@@ -1,0 +1,10 @@
+{
+  "format": "sepang-flat-pit-layout-v1",
+  "entrance": [-1104.1646, 0, -105.0607],
+  "straightStart": [-690.8542, 0, 29.9084],
+  "transitionStartDistanceX": 180,
+  "anchor": "pit-straight-start",
+  "removeOldApron": true,
+  "referenceImage": "pit entry fix.png",
+  "decision": "User confirmed the red middle-of-corner entrance and blue pit-straight start on reference-review/pit-change-proposal.png. Shorten only the pit approach; preserve the main circuit layout."
+}

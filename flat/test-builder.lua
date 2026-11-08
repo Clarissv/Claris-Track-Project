@@ -59,7 +59,7 @@ instanceMeta.__newindex = function(o, k, value)
     else o._props[k] = value end
 end
 local function instance(class)
-    return setmetatable({ _props = { ClassName = class, Name = class, Shape = "Block", CFrame = cf(), Size = vector(1, 1, 1), Color = Color3.new(1, 1, 1), Material = "SmoothPlastic", ChildAdded = signal(), Activated = signal() }, _children = {}, _attributes = {} }, instanceMeta)
+    return setmetatable({ _props = { ClassName = class, Name = class, Shape = "Block", CFrame = cf(), Size = vector(1, 1, 1), Color = Color3.new(1, 1, 1), Material = "SmoothPlastic", MaterialVariant = "", ChildAdded = signal(), Activated = signal() }, _children = {}, _attributes = {} }, instanceMeta)
 end
 Instance = { new = instance }
 function methods:IsA(class) return self.ClassName == class or class == "BasePart" and self.ClassName == "Part" end
@@ -95,13 +95,15 @@ local humanoid = child(player.Character, "Humanoid", "Humanoid")
 humanoid.Health = 100
 local catalog = child(child(storage, "Folder", "PlacementObject"), "Folder", "Object")
 child(catalog, "Part", "guid-block")
+local roadTemplate = child(catalog, "Part", "guid-road")
+roadTemplate.Color, roadTemplate.Material, roadTemplate.MaterialVariant = Color3.fromRGB(17,17,17), "Concrete", "TestPaving"
 local network = child(storage, "Folder", "NetworkContainer")
 local placement = child(child(network, "Folder", "RemoteEvents"), "RemoteEvent", "PlacementSystem")
 local manifest = child(child(network, "Folder", "RemoteFunctions"), "RemoteFunction", "GetCatalogManifest")
 local catalogNames = { "Block" }
 function manifest:InvokeServer()
     local result = {}
-    for _, name in ipairs(catalogNames) do result[#result + 1] = { name = name, guid = "guid-block", category = "Basic", plus = false } end
+    for _, name in ipairs(catalogNames) do result[#result + 1] = { name = name, guid = name == "Others75" and "guid-road" or "guid-block", category = "Basic", plus = false } end
     return result
 end
 local calls, reject, pauseAfterFirst, placementOverride, rejectAt = {}, false, false, nil, nil
@@ -120,7 +122,8 @@ function placement:FireServer(...)
     if reject or #calls == rejectAt then return end
     local o = instance("Part")
     o.Name, o.CFrame, o.Size = args[1], args[2], args[3]
-    o.Color, o.Material = args[5] or Color3.new(1, 1, 1), args[6] or "SmoothPlastic"
+    local template = args[1] == "Others75" and roadTemplate or catalog:FindFirstChild("guid-block")
+    o.Color, o.Material, o.MaterialVariant = args[5] or template.Color, args[6] or template.Material, args[7] or template.MaterialVariant
     o.Anchored, o.CanCollide = true, args[8] == nil or args[8]
     if placementOverride then placementOverride(o) end
     o.Parent = builds
@@ -184,6 +187,7 @@ local function fresh()
     root.Anchored, humanoid.SeatPart, humanoid.Health, pivotCalls = false, nil, 100, 0
     clock = 0
     catalogNames = { "Block" }
+    fixtureDocument.meta.catalogRoles = nil
     return loadBuilder()
 end
 local elevatedSentinel = { State = "paused", preserved = true }
@@ -486,6 +490,50 @@ methods.Raycast = function() return nil end
 local missingGround = pcall(api.GetTarget, 1)
 methods.Raycast = savedRaycast
 assert(not missingGround and #calls == 0, "A missing grass raycast must not place a road at character pivot height")
+api.Unload()
+local function withRoadRole()
+    fresh()
+    fixtureDocument.meta.catalogRoles = {{name="Others75",appearance="color",partIndices={0}}}
+    catalogNames = {"Block","Others75"}
+    return loadBuilder()
+end
+api = withRoadRole()
+api.Inspect()
+local roadTarget, plainTarget = api.GetTarget(1), api.GetTarget(2)
+assert(roadTarget.name == "Others75" and roadTarget.material == "Concrete" and roadTarget.materialVariant == "TestPaving", "Road role must select Others75 and retain its material/variant")
+assert(math.abs(roadTarget.color.R-65/255)<.000001 and plainTarget.name == "Block" and plainTarget.material == "Asphalt", "Only road-role parts get Others75; colour must use the grey palette")
+preview = api.Preview()
+assert(preview:GetChildren()[1].Material == "Concrete" and preview:GetChildren()[1].MaterialVariant == "TestPaving", "Preview must retain the road tile material")
+pauseAfterFirst = true
+api.Build()
+assert(calls[1][1] == "Others75" and calls[1][6] == "Concrete" and calls[1][7] == "TestPaving", "Placement must send the road tile with its retained material and variant")
+checkpoint = checkpointBuilder()
+assert(checkpoint.catalogName == "Block" and checkpoint.applyAppearance and checkpoint.catalogRoles[1].name == "Others75", "A checkpoint on the road must preserve the base catalog, appearance and road role separately")
+api = loadBuilder("SepangFlat/sepang-plan.json",nil,"resume")
+pauseAfterFirst = false
+api.Build()
+assert(#calls == 2 and calls[2][1] == "Block" and api.State == "complete", "Resume must continue into the plain-block group without changing its catalog")
+checkpointDocument.catalogRoles[1].name = "wrong-tile"
+ok = pcall(loadBuilder,"SepangFlat/sepang-plan.json",nil,"resume")
+assert(not ok and _G.SepangFlatBuilder == api, "Wrong road tile checkpoint must preserve the current session")
+checkpointDocument.catalogRoles[1].name = "Others75"
+checkpointDocument.catalogRoles[1].partIndices[1] = 1
+ok = pcall(loadBuilder,"SepangFlat/sepang-plan.json",nil,"resume")
+assert(not ok and _G.SepangFlatBuilder == api, "Changed road tile assignments must fail before replacing the session")
+api = withRoadRole()
+placementOverride = function(o) o.MaterialVariant = "WrongVariant" end
+ok = pcall(api.Build)
+assert(not ok and #calls == 1 and api.NextIndex == 1, "A changed tile material variant must not be falsely confirmed")
+api = withRoadRole()
+catalogNames = {"Block"}
+ok = pcall(api.Build)
+assert(not ok and #calls == 0, "Missing Others75 must fail before publishing any part")
+api = withRoadRole()
+local unwantedTexture = child(roadTemplate,"Texture","UnexpectedTexture")
+ok = pcall(api.Build)
+assert(not ok and #calls == 0, "A textured tile must require fresh inspection rather than using the old plain-block assumption")
+unwantedTexture:Destroy()
+api = fresh()
 api.Unload()
 -- HTTP_LOADER_TESTS
 assert(_G.SepangBuilder == elevatedSentinel, "All flat operations must preserve the elevated builder")

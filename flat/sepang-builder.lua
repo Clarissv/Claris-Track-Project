@@ -11,7 +11,7 @@ local player = Players.LocalPlayer
 local CONFIG = {
     CatalogName = nil, -- Auto-select a plain rectangular Part from the live manifest.
     Origin = nil, -- Map center at the asphalt surface. nil: grass beneath you.
-    StartAt = "pit-entry", -- Your standing point maps to the grey apron. "center": legacy centre placement.
+    StartAt = "pit-entry", -- Your standing point maps to the pit-straight start. "center": legacy centre placement.
     Altitude = 0,
     GroundY = nil, -- Optional top height of your existing grass platform.
     GroundClearance = 0.25, -- Slight lift above the existing grass plate.
@@ -73,6 +73,15 @@ for i, part in ipairs(PLAN) do
     local right, up = Vector3.new(part[8],part[9],part[10]), Vector3.new(part[11],part[12],part[13])
     assert(math.abs(right.Magnitude-1) < 0.002 and math.abs(up.Magnitude-1) < 0.002 and math.abs(right:Dot(up)) < 0.002 and up.Y > 0, "Sepang: invalid orientation in part " .. i)
 end
+local CATALOG_ROLES, PART_ROLE = meta.catalogRoles or {}, {}
+assert(type(CATALOG_ROLES) == "table", "Sepang: invalid catalog roles")
+for roleIndex, role in ipairs(CATALOG_ROLES) do
+    assert(type(role) == "table" and type(role.name) == "string" and #role.name > 0 and role.appearance == "color" and type(role.partIndices) == "table", "Sepang: invalid catalog role")
+    for _, index in ipairs(role.partIndices) do
+        assert(finite(index) and index % 1 == 0 and index >= 0 and index < #PLAN and not PART_ROLE[index + 1], "Sepang: invalid or duplicate catalog role index")
+        PART_ROLE[index + 1] = roleIndex
+    end
+end
 local bounds = meta.planBounds
 assert(type(bounds) == "table" and type(bounds.min) == "table" and type(bounds.max) == "table" and #bounds.min == 3 and #bounds.max == 3, "Sepang: missing plan bounds")
 for k = 1, 3 do assert(finite(bounds.min[k]) and finite(bounds.max[k]) and bounds.min[k] <= bounds.max[k], "Sepang: invalid plan bounds") end
@@ -91,6 +100,14 @@ if launchMode == "resume" then
     assert(type(saved.origin) == "table" and #saved.origin == 12 and finite(saved.scale) and saved.scale > 0, "Sepang: invalid checkpoint transform")
     for _, n in ipairs(saved.origin) do assert(finite(n), "Sepang: invalid checkpoint transform") end
     assert(type(saved.catalogName) == "string" and type(saved.applyAppearance) == "boolean", "Sepang: invalid checkpoint catalog")
+    local savedRoles = saved.catalogRoles or {}
+    assert(type(savedRoles) == "table" and #savedRoles == #CATALOG_ROLES, "Sepang: checkpoint uses different catalog roles")
+    for i, role in ipairs(CATALOG_ROLES) do
+        assert(type(savedRoles[i]) == "table" and savedRoles[i].name == role.name and savedRoles[i].appearance == role.appearance, "Sepang: checkpoint uses a different road tile")
+        local indices = savedRoles[i].partIndices
+        assert(type(indices) == "table" and #indices == #role.partIndices, "Sepang: checkpoint uses different road tile assignments")
+        for k, index in ipairs(role.partIndices) do assert(indices[k] == index, "Sepang: checkpoint uses different road tile assignments") end
+    end
     CONFIG.Origin, CONFIG.Scale = CFrame.new(table.unpack(saved.origin)), saved.scale
     CONFIG.CatalogName, CONFIG.ApplyAppearance = saved.catalogName, saved.applyAppearance
     restoredCheckpoint = saved
@@ -114,6 +131,7 @@ local api = { Config = CONFIG, Count = #PLAN, NextIndex = restoredCheckpoint and
 _G.SepangFlatBuilder = api
 local preview, manifest, selected, origin, buildScale, appearance, pending, savedCamera
 local catalogCandidates, candidateIndex = {}, 0
+local roleSelected = {}
 local busy, paused, previewing = false, false, false
 local streamCenter, streamTask
 local follower
@@ -192,9 +210,17 @@ function api.Inspect()
         if not selected and #candidates > 0 then selected = candidates[1] end
     end
     assert(selected, "No accessible plain rectangular Part found; choose a different catalog name or inspect game access")
+    roleSelected = {}
+    for i, role in ipairs(CATALOG_ROLES) do
+        for _, candidate in ipairs(candidates) do
+            if candidate.entry.name == role.name then roleSelected[i] = candidate; break end
+        end
+        assert(roleSelected[i], "Required road tile " .. role.name .. " is missing, inaccessible, or is not a plain rectangular Part")
+    end
     for i, candidate in ipairs(candidates) do if candidate == selected then candidateIndex = i end end
     if catalogButton then catalogButton.Text = "Block: " .. selected.entry.name .. "  >" end
-    status(string.format("%d parts. Catalog: %s. Appearance access: %s", #PLAN, selected.entry.name, plus and "yes" or "no"))
+    local roadInfo = #CATALOG_ROLES > 0 and (" Road: " .. CATALOG_ROLES[1].name .. ".") or ""
+    status(string.format("%d parts. Catalog: %s.%s Appearance access: %s", #PLAN, selected.entry.name, roadInfo, plus and "yes" or "no"))
     return selected.entry.name, manifest
 end
 function api.CycleCatalog()
@@ -236,6 +262,22 @@ local function geometry(index, cf, scale)
     local position = Vector3.new(p[1], p[2], p[3]) * scale
     local frame = CFrame.fromMatrix(position, Vector3.new(p[8],p[9],p[10]), Vector3.new(p[11],p[12],p[13]))
     return cf * frame, Vector3.new(p[4], p[5], p[6]) * scale, PALETTE[p[7]]
+end
+local function makeRequest(index, cf, scale, apply)
+    local frame, size, style = geometry(index, cf, scale)
+    local roleIndex = PART_ROLE[index]
+    local candidate = roleIndex and assert(roleSelected[roleIndex], "Inspect the required road tile first") or selected
+    local template = candidate.template
+    -- Others75 receives the requested road colour while preserving its live
+    -- material/variant. Other groups use the normal plain-block palette.
+    local color = roleIndex and not apply and template.Color or style[1]
+    local material = roleIndex and template.Material or style[2]
+    local variant = roleIndex and (template.MaterialVariant or "") or ""
+    return {index=index, name=candidate.entry.name, cf=frame, size=size,
+        appearance=apply, verifyAppearance=apply or roleIndex ~= nil,
+        color=color, material=material, materialVariant=variant,
+        baseCatalogName=selected.entry.name, applyAppearance=apply,
+        origin=cf, scale=scale}
 end
 local function validate(scale)
     assert(type(scale) == "number" and scale > 0 and scale < math.huge, "Scale must be positive and finite")
@@ -288,8 +330,9 @@ function api.GetTarget(index)
     validate(buildScale or CONFIG.Scale)
     origin = origin or resolveOrigin()
     buildScale = buildScale or CONFIG.Scale
-    local cf, size, style = geometry(index, origin, buildScale)
-    return {index = index, name = selected.entry.name, cf = cf, size = size, color = style[1], material = style[2], origin = origin, scale = buildScale}
+    local apply = appearance
+    if apply == nil then apply = CONFIG.ApplyAppearance end
+    return makeRequest(index, origin, buildScale, apply)
 end
 function api.ClearPreview()
     assert(not previewing, "Wait for preview generation to finish")
@@ -339,6 +382,8 @@ function api.Preview()
         part.CFrame = target
         part.Color = style[1]
         part.Material = style[2]
+        local candidate = PART_ROLE[i] and roleSelected[PART_ROLE[i]]
+        if candidate then part.Material, part.MaterialVariant = candidate.template.Material, candidate.template.MaterialVariant or "" end
         part.TopSurface = Enum.SurfaceType.Smooth
         part.BottomSurface = Enum.SurfaceType.Smooth
         part.Parent = preview
@@ -375,11 +420,12 @@ local function matches(object, request)
     local sizeError = (object.Size - request.size).Magnitude
     if sizeError > 0.05 then return false, string.format("size differs by %.3f studs", sizeError) end
     if object.CFrame.RightVector:Dot(request.cf.RightVector) < 0.999 or object.CFrame.UpVector:Dot(request.cf.UpVector) < 0.999 then return false, "rotation/slope differs" end
-    if request.appearance then
+    if request.verifyAppearance then
         local actual, expected = object.Color, request.color
         local difference = Vector3.new(actual.R - expected.R, actual.G - expected.G, actual.B - expected.B).Magnitude
         if difference > 0.03 then return false, string.format("color differs by %.3f", difference) end
         if object.Material ~= request.material then return false, "material=" .. tostring(object.Material) .. " (expected " .. tostring(request.material) .. ")" end
+        if (object.MaterialVariant or "") ~= request.materialVariant then return false, "material variant differs" end
     end
     if not object.CanCollide then return false, "CanCollide=false" end
     if not object.Anchored then return false, "Anchored=false" end
@@ -529,8 +575,7 @@ function api.Build()
         streamConnection = folder.ChildAdded:Connect(indexObject)
         while api.NextIndex <= #PLAN and not paused do
             local index = api.NextIndex
-            local cf, size, style = geometry(index, origin, buildScale)
-            local request = { index = index, name = selected.entry.name, cf = cf, size = size, appearance = appearance, color = style[1], material = style[2] }
+            local request = makeRequest(index, origin, buildScale, appearance)
             api.LastRequest = request
             api.Phase = "moving"
             if CONFIG.FollowBuild then status(string.format("Confirmed %d / %d; moving near part %d", index - 1, #PLAN, index), true) end
@@ -554,7 +599,7 @@ function api.Build()
                 connection = folder.ChildAdded:Connect(function(object) table.insert(candidates, object) end)
                 api.Phase = "confirming"
                 status(string.format("Confirmed %d / %d; confirming part %d", index - 1, #PLAN, index), true)
-                endpoint:FireServer(request.name, cf, size, 0, appearance and style[1] or nil, appearance and style[2] or nil, appearance and "" or nil, true)
+                endpoint:FireServer(request.name, request.cf, request.size, 0, request.appearance and request.color or nil, request.appearance and request.material or nil, request.appearance and request.materialVariant or nil, true)
                 local object, refreshed
                 local deadline = started + CONFIG.PlacementTimeout
                 repeat

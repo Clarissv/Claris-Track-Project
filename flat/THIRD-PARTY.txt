@@ -20,3 +20,14 @@ Sepang1631Mtl in the same user-supplied GLB. Sepang1401Mtl provides the local
 driving-strip boundary for side detection and runoff widths. The original
 textures and mesh are not redistributed. This is an approximate adaptation
 to a wider flat layout, not surveyed real-world geometry; see surface-reference.md.
+
+Model-derived pit entry and banner placement:
+source/sepang-pit-entry.json records inspected outer pit-entry boundary arcs
+from Sepang1401Mtl. source/bluenight-placement.json records the user-selected
+corner and main-grandstand seating centroid from Sepang1621Mtl in the same GLB.
+The pit entry is widened and blended into the retained flat pit lane.
+
+Bluenight artwork:
+Bluenight.png was supplied by the user for this sponsor board. It is sampled
+and approximated with coloured rectangular Parts. It is not covered by the
+TUM CSV licence; no additional ownership or licence is claimed for this artwork.

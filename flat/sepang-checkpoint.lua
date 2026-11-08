@@ -31,7 +31,13 @@ local checksum = 0
 for _, part in ipairs(plan.parts) do for _, n in ipairs(part) do checksum = (checksum * 65599 + math.floor(n * 10000 + 0.5)) % 2147483647 end end
 local saved = { format = "sepang-checkpoint-v1", count = api.Count, nextIndex = api.NextIndex,
     checksum = string.format("%.0f", checksum), origin = transform, scale = scale,
-    catalogName = request.name, applyAppearance = request.appearance == true }
+    catalogName = request.baseCatalogName or request.name,
+    applyAppearance = request.applyAppearance == true, catalogRoles = {} }
+for _, role in ipairs(plan.meta.catalogRoles or {}) do
+    local indices = {}
+    for _, index in ipairs(role.partIndices) do indices[#indices + 1] = index end
+    saved.catalogRoles[#saved.catalogRoles + 1] = {name=role.name, appearance=role.appearance, partIndices=indices}
+end
 writefile(checkpointPath or "SepangFlat/sepang-flat-checkpoint.json", http:JSONEncode(saved))
 api.Pause()
 print(string.format("[Sepang checkpoint] Saved %d confirmed parts; resume at part %d. Save the partial build through the game's build-slot UI before rejoining.", saved.nextIndex - 1, saved.nextIndex))

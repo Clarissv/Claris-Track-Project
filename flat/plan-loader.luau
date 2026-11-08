@@ -43,6 +43,15 @@ for i, part in ipairs(PLAN) do
     local right, up = Vector3.new(part[8],part[9],part[10]), Vector3.new(part[11],part[12],part[13])
     assert(math.abs(right.Magnitude-1) < 0.002 and math.abs(up.Magnitude-1) < 0.002 and math.abs(right:Dot(up)) < 0.002 and up.Y > 0, "Sepang: invalid orientation in part " .. i)
 end
+local CATALOG_ROLES, PART_ROLE = meta.catalogRoles or {}, {}
+assert(type(CATALOG_ROLES) == "table", "Sepang: invalid catalog roles")
+for roleIndex, role in ipairs(CATALOG_ROLES) do
+    assert(type(role) == "table" and type(role.name) == "string" and #role.name > 0 and role.appearance == "color" and type(role.partIndices) == "table", "Sepang: invalid catalog role")
+    for _, index in ipairs(role.partIndices) do
+        assert(finite(index) and index % 1 == 0 and index >= 0 and index < #PLAN and not PART_ROLE[index + 1], "Sepang: invalid or duplicate catalog role index")
+        PART_ROLE[index + 1] = roleIndex
+    end
+end
 local bounds = meta.planBounds
 assert(type(bounds) == "table" and type(bounds.min) == "table" and type(bounds.max) == "table" and #bounds.min == 3 and #bounds.max == 3, "Sepang: missing plan bounds")
 for k = 1, 3 do assert(finite(bounds.min[k]) and finite(bounds.max[k]) and bounds.min[k] <= bounds.max[k], "Sepang: invalid plan bounds") end
@@ -61,6 +70,14 @@ if launchMode == "resume" then
     assert(type(saved.origin) == "table" and #saved.origin == 12 and finite(saved.scale) and saved.scale > 0, "Sepang: invalid checkpoint transform")
     for _, n in ipairs(saved.origin) do assert(finite(n), "Sepang: invalid checkpoint transform") end
     assert(type(saved.catalogName) == "string" and type(saved.applyAppearance) == "boolean", "Sepang: invalid checkpoint catalog")
+    local savedRoles = saved.catalogRoles or {}
+    assert(type(savedRoles) == "table" and #savedRoles == #CATALOG_ROLES, "Sepang: checkpoint uses different catalog roles")
+    for i, role in ipairs(CATALOG_ROLES) do
+        assert(type(savedRoles[i]) == "table" and savedRoles[i].name == role.name and savedRoles[i].appearance == role.appearance, "Sepang: checkpoint uses a different road tile")
+        local indices = savedRoles[i].partIndices
+        assert(type(indices) == "table" and #indices == #role.partIndices, "Sepang: checkpoint uses different road tile assignments")
+        for k, index in ipairs(role.partIndices) do assert(indices[k] == index, "Sepang: checkpoint uses different road tile assignments") end
+    end
     CONFIG.Origin, CONFIG.Scale = CFrame.new(table.unpack(saved.origin)), saved.scale
     CONFIG.CatalogName, CONFIG.ApplyAppearance = saved.catalogName, saved.applyAppearance
     restoredCheckpoint = saved

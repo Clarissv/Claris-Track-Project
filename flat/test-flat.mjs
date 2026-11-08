@@ -6,9 +6,10 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {flatPoints,kerbFactor,compileFlat} from './compile-flat.mjs';
 import {boxBasis,boxCorners} from './geometry.mjs';
-import {add,mul,sub,dot,KDTree} from './track-geometry.mjs';
+import {add,mul,sub,dot,unit,KDTree} from './track-geometry.mjs';
 import {kerbColor} from './extract-kerbs.mjs';
 import {tidyRunoffProfiles,runoffHeight} from './tidy-runoff.mjs';
+import {bannerPixels} from './banner.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const plan=JSON.parse(fs.readFileSync(path.join(here,'sepang-plan.json'))),reference=JSON.parse(fs.readFileSync(path.join(here,'source/sepang-reference.json'))),points=flatPoints(reference);
 const sha=body=>crypto.createHash('sha256').update(body).digest('hex');
@@ -40,15 +41,19 @@ test('road surfaces stay level and runoff overlaps stay just below them',()=>{
     assert.ok(boxCorners(p).every(c=>c.every(Number.isFinite)));
   }
 });
-test('the standing anchor lies on the concrete apron beside pit entry',()=>{
+test('the standing anchor is exactly the pit-straight start and the grey apron is removed',()=>{
   const anchor=plan.meta.placementAnchor,q=anchor.position;
-  assert.equal(anchor.name,'pit-entry-apron');assert.equal(q[1],0);
-  assert.ok(Math.hypot(q[0]-anchor.pitEntry[0],q[2]-anchor.pitEntry[2])<400);
+  assert.equal(anchor.name,'pit-straight-start');assert.equal(q[1],0);
+  assert.deepEqual(q,[-690.8542,0,29.9084],'The straight must begin at the confirmed blue point');
+  assert.deepEqual(q,plan.meta.pitEntry.join);
+  assert.ok(Math.hypot(q[0]-anchor.pitEntry[0],q[2]-anchor.pitEntry[2])<500);
   assert.ok(anchor.partIndices.some(i=>{
     const p=plan.parts[i],basis=boxBasis(p),d=sub(q,p.slice(0,3));
-    return p[6]===3&&Math.abs(dot(d,basis.right))<=p[3]/2&&Math.abs(dot(d,basis.back))<=p[5]/2;
-  }),'The anchor is outside the apron');
-  for(const i of plan.meta.groups.pitLane){const p=plan.parts[i],basis=boxBasis(p),d=sub(q,p.slice(0,3));assert.ok(Math.abs(dot(d,basis.right))>p[3]/2+8||Math.abs(dot(d,basis.back))>p[5]/2+8,'Standing anchor is too close to pit-lane traffic');}
+    return p[6]===1&&Math.abs(dot(d,basis.right))<=p[3]/2+.05&&Math.abs(dot(d,basis.back))<=p[5]/2+.05;
+  }),'The anchor is outside the pit road');
+  assert.ok(plan.meta.groups.runoff.every(i=>plan.parts[i][6]!==3),'The old grey apron must be absent');
+  const first=plan.parts[plan.meta.groups.pitLane[plan.meta.pitEntry.entryParts]],basis=boxBasis(first);
+  assert.ok(Math.hypot(...sub(sub(first.slice(0,3),mul(basis.back,first[5]/2)),[q[0],first[1],q[2]]))<.025,'The retained straight must start at the anchor');
   assert.ok(fs.existsSync(path.join(here,'build-start-point.png')));
 });
 test('dense road samples have asphalt coverage through both lane edges and every turn',()=>{
@@ -194,6 +199,76 @@ test('flat release has independent paths, checkpoint name and identical runtime 
 });
 test('invalid kerb heights and part budgets fail before producing a plan',()=>{
   assert.throws(()=>compileFlat(reference,{curbProfile:[0,1]}));assert.throws(()=>compileFlat(reference,{maxParts:15000}));assert.throws(()=>compileFlat(reference,{curbTaperLength:0}));
+});
+test('model pit entry has full lane coverage, a clear driving surface and a retained straight/exit',()=>{
+  const entry=plan.meta.pitEntry,source=JSON.parse(fs.readFileSync(path.join(here,entry.sourceFile))),lane=plan.meta.groups.pitLane.map(i=>plan.parts[i]);
+  assert.equal(source.sourceSha256,reference.meta.sourceSha256);assert.equal(source.centerlineSha256,sha(JSON.stringify(reference.centerline)));
+  assert.equal(entry.widthStuds,reference.meta.pitLane.widthStuds);
+  assert.ok(entry.entryLengthStuds>500&&entry.entryLengthStuds<750&&entry.removedOldLaneParts<reference.auxiliary.pitLane.length/2);
+  assert.deepEqual(entry.start,[-1104.1646,0,-105.0607]);
+  const retained=reference.auxiliary.pitLane.slice(entry.retainedStartOriginalIndex);
+  assert.equal(entry.retainedPitLaneParts,retained.length);
+  assert.deepEqual(lane.slice(entry.entryParts+1).map(p=>[p[0],p[2],p[5]]),retained.slice(1).map(p=>[p[0],p[2],p[5]]),'Straight/exit after the trimmed first piece must be retained');
+  assert.ok(Math.abs(lane[entry.entryParts][5]-retained[0][5]/2)<.0001);
+  const boxes=lane.map(p=>({p,b:boxBasis(p)})),obstacles=['curbs','pitWall'].flatMap(g=>plan.meta.groups[g].map(i=>({p:plan.parts[i],b:boxBasis(plan.parts[i])})));
+  const contains=({p,b},q)=>{const d=sub(q,p.slice(0,3));return Math.abs(dot(d,b.right))<=p[3]/2+.05&&Math.abs(dot(d,b.back))<=p[5]/2+.05;};
+  let checked=0,modelSamples=0;
+  for(let i=1;i<entry.route.length-1;i++) {
+    const q=entry.route[i],a=entry.route[i-1],b=entry.route[i+1],t=unit(sub(b,a)),r=[t[2],0,-t[0]];
+    if(source.samples.some(p=>Math.hypot(q[0]-p[0],q[2]-p[1])<2))modelSamples++;
+    for(const f of [-.98,0,.98]) {const sample=add(q,mul(r,f*entry.widthStuds/2));assert.ok(boxes.some(box=>contains(box,sample)),`Pit entry gap ${i}/${f}`);assert.ok(!obstacles.some(box=>contains(box,sample)),`Raised obstacle across pit entry ${i}/${f}`);checked++;}
+  }
+  assert.ok(checked>700&&modelSamples>100);
+  assert.ok(dot(unit(sub(entry.route[1],entry.route[0])),entry.startTangent)>.9999,'Entrance must continue along the corner tangent');
+  assert.ok(dot(unit(sub(entry.route.at(-1),entry.route.at(-2))),entry.joinTangent)>.9999,'Pit straight must receive a smooth approach');
+  for(const f of [-.98,0,.98]) {
+    const next=lane[entry.entryParts],r=boxBasis(next).right,q=add(entry.join,mul(r,f*entry.widthStuds/2));
+    assert.ok(contains(boxes[entry.entryParts-1],q)&&contains(boxes[entry.entryParts],q),'Pit connection must overlap both sides of the retained lane');
+  }
+});
+test('Others75 is assigned only to road surfaces with the requested grey colour',()=>{
+  assert.deepEqual(plan.meta.palette[0].rgb,[65,66,66]);
+  assert.deepEqual(plan.meta.catalogRoles,[{name:'Others75',appearance:'color',partIndices:[...plan.meta.groups.asphalt,...plan.meta.groups.pitLane]}]);
+  const manifest=JSON.parse(fs.readFileSync(path.join(here,'release-manifest.json'))),runtime=JSON.parse(fs.readFileSync(path.join(here,'releases',manifest.version,'runtime-plan.json')));
+  assert.deepEqual(runtime.meta.catalogRoles,plan.meta.catalogRoles);
+});
+test('one Bluenight banner lies on the inside-corner grass and clears the racing surfaces',()=>{
+  const banner=plan.meta.banner,art=bannerPixels(fs.readFileSync(path.join(here,'Bluenight.png'))),indices=plan.meta.groups.banner;
+  assert.equal(banner.imageSha256,art.sourceSha256);assert.equal(indices.length,art.rectangles.length+1);
+  assert.ok(indices.length<800);assert.equal(banner.width/banner.height,16/9);
+  assert.equal(banner.orientation,'ground');assert.deepEqual(banner.front,[0,1,0]);
+  const away=unit([banner.position[0]-banner.facingTarget[0],0,banner.position[2]-banner.facingTarget[1]]);assert.ok(dot(away,banner.imageTop)>.9999);
+  assert.equal(banner.grandstandMaterial,'Sepang1621Mtl');assert.ok(banner.grandstandVertexCount>1000);
+  const backing=plan.parts[indices[0]],backingBasis=boxBasis(backing);
+  assert.equal(banner.placementZone,'inside-corner');assert.ok(banner.position[2]>banner.corner[1]+100);
+  const inside=q=>{
+    let hit=false;
+    for(let i=0,j=plan.centerline.length-1;i<plan.centerline.length;j=i++) {
+      const a=plan.centerline[i],b=plan.centerline[j];
+      if((a[2]>q[2])!==(b[2]>q[2])&&q[0]<(b[0]-a[0])*(q[2]-a[2])/(b[2]-a[2])+a[0])hit=!hit;
+    }
+    return hit;
+  };
+  const backingCorners=boxCorners(backing),bounds={min:[0,2].map(k=>Math.min(...backingCorners.map(q=>q[k]))-28),max:[0,2].map(k=>Math.max(...backingCorners.map(q=>q[k]))+28)};
+  const occupied=['asphalt','pitLane','runoff','curbs'].flatMap(g=>plan.meta.groups[g].map(i=>plan.parts[i])).map(p=>({p,corners:boxCorners(p)})).filter(({corners})=>[0,2].every((k,i)=>Math.max(...corners.map(q=>q[k]))>=bounds.min[i]&&Math.min(...corners.map(q=>q[k]))<=bounds.max[i])).map(({p,corners})=>{
+    const r=unit([p[7],0,p[9]]),b=[-r[2],0,r[0]],center=[p[0],0,p[2]];
+    return {center,r,b,rx:Math.max(...corners.map(q=>Math.abs(dot(sub(q,center),r)))),rz:Math.max(...corners.map(q=>Math.abs(dot(sub(q,center),b))))};
+  });
+  for(let x=-backing[3]/2;x<=backing[3]/2;x+=8)for(let z=-backing[5]/2;z<=backing[5]/2;z+=8) {
+    const q=add(add(backing.slice(0,3),mul(backingBasis.right,x)),mul(backingBasis.back,z));
+    assert.ok(inside(q),'The full banner must lie inside the circuit');
+    for(const o of occupied){const d=sub(q,o.center),distance=Math.hypot(Math.max(0,Math.abs(dot(d,o.r))-o.rx),Math.max(0,Math.abs(dot(d,o.b))-o.rz));assert.ok(distance>=23.9,'Banner footprint must clear the road, kerbs and runoff by 24 studs');}
+  }
+  const grass=-plan.meta.settings.groundClearance;
+  assert.ok(Math.abs(backing[1]+backing[4]/2-grass-.015)<1e-8);
+  for(const index of indices.slice(1)) {
+    const p=plan.parts[index],basis=boxBasis(p),d=sub(p.slice(0,3),backing.slice(0,3));
+    assert.deepEqual(basis.up,[0,1,0]);assert.ok(Math.abs(p[1]+p[4]/2-grass-.04)<1e-8);
+    assert.ok(Math.abs(dot(d,backingBasis.right))+p[3]/2<=backing[3]/2+.01);
+    assert.ok(Math.abs(dot(d,backingBasis.back))+p[5]/2<=backing[5]/2+.01);
+  }
+  assert.ok(art.rectangles.some(r=>r.x<art.width*.4)&&art.rectangles.some(r=>r.x>art.width*.7),'Image text and right-hand logo must both survive sampling');
+  for(const name of ['build-pit-entry.png','build-banner-front.png','build-banner-location.png'])assert.ok(fs.existsSync(path.join(here,name)));
 });
 test('all captured original Sepang files remain unchanged',t=>{
   const snapshot=path.join(here,'source/protected-files.json');

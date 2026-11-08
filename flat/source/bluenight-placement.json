@@ -1,0 +1,20 @@
+{
+  "format": "sepang-banner-placement-v1",
+  "sourceSha256": "2977de6489c96b52a9e808417609a4203883a374b025637d2e9aefc461ecc6bb",
+  "corner": [
+    -192.15,
+    -1279.6977
+  ],
+  "facingTarget": [
+    -146.452,
+    -196.6489
+  ],
+  "grandstandMaterial": "Sepang1621Mtl",
+  "grandstandVertexCount": 9216,
+  "method": "One rectangular banner laid flat on the grass inside the topmost corner shown in banner area.png, readable from the model main-grandstand side.",
+  "placementZone": "inside-corner",
+  "orientation": "ground",
+  "width": 128,
+  "height": 72,
+  "clearanceFromTrack": 24
+}

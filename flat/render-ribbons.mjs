@@ -12,7 +12,7 @@ export function previewParts(plan) {
 }
 export function render(plan,width=1400,height=900,view={}) {
   const parts=previewParts(plan),palette=plan.meta.palette;
-  const right=view.top?[1,0,0]:[Math.SQRT1_2,0,-Math.SQRT1_2],up=view.top?[0,0,-1]:[-0.353553,0.866025,-0.353553],forward=view.top?[0,1,0]:[0.612372,0.5,0.612372];
+  const right=view.right??(view.top?[1,0,0]:[Math.SQRT1_2,0,-Math.SQRT1_2]),up=view.up??(view.top?[0,0,-1]:[-0.353553,0.866025,-0.353553]),forward=view.forward??(view.top?[0,1,0]:[0.612372,0.5,0.612372]);
   const projected=parts.map(p=>boxCorners(p).map(v=>[dot(v,right),dot(v,up),dot(v,forward)]));
   const min=[Infinity,Infinity],max=[-Infinity,-Infinity];
   for(const box of projected)for(const p of box)for(let k=0;k<2;k++){min[k]=Math.min(min[k],p[k]);max[k]=Math.max(max[k],p[k]);}
@@ -45,6 +45,8 @@ export function writeArtifacts(directory,plan) {
   const kerb=plan.meta.kerbRuns.find(run=>run.arc.at(-1)>100&&Math.abs(plan.centerline[run.start][0]-plan.centerline[run.end][0])>20);
   if(kerb){const index=(kerb.start+kerb.end)>>1,p=plan.centerline[index],a=plan.centerline[index-1],b=plan.centerline[index+1],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz),offset=kerb.side*((kerb.side>0?p[3]:p[4])+plan.meta.settings.curbWidth/2);fs.writeFileSync(path.join(directory,'build-kerb-detail.png'),render(plan,1400,900,{target:[p[0]+dz/length*offset,.06,p[2]-dx/length*offset],span:140}));}
   if(plan.meta.placementAnchor)fs.writeFileSync(path.join(directory,'build-start-point.png'),render(plan,1400,900,{top:true,target:plan.meta.placementAnchor.position,span:500}));
+  if(plan.meta.pitEntry){const a=plan.meta.pitEntry.start,b=plan.meta.pitEntry.join;fs.writeFileSync(path.join(directory,'build-pit-entry.png'),render(plan,1400,800,{top:true,target:[(a[0]+b[0])/2,0,(a[2]+b[2])/2],span:1000}));}
+  if(plan.meta.banner){const b=plan.meta.banner,r=boxBasis(plan.parts[plan.meta.groups.banner[0]]).right;fs.writeFileSync(path.join(directory,'build-banner-front.png'),render(plan,1280,800,{target:b.position,span:b.width+16,right:r,up:b.imageTop,forward:[0,1,0]}));fs.writeFileSync(path.join(directory,'build-banner-location.png'),render(plan,1000,800,{target:b.position,span:500}));}
   const template=fs.readFileSync(path.join(directory,'viewer-template.html'),'utf8');
   fs.writeFileSync(path.join(directory,'sepang-3d-viewer.html'),template.replace('/* GENERATED_DATA */',()=>`const PLAN=${JSON.stringify(plan)};`));
   const heights=plan.centerline.map(p=>p[1]),lo=Math.min(...heights),hi=Math.max(...heights),total=plan.centerline.at(-1)[5],poly=plan.centerline.map(p=>`${(60+p[5]/total*1080).toFixed(2)},${(250-(p[1]-lo)/(hi-lo||1)*180).toFixed(2)}`).join(' ');
