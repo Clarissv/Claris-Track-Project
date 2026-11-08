@@ -1,5 +1,5 @@
 -- Flat Sepang builder for Jawa Timur (place 110369730911937).
--- TUM centerline/widths with GLB grades. Run with normal build-tool access.
+-- TUM centreline/widths and model-derived kerbs/runoff on a level surface.
 -- Template: use sepang-run.lua to load the builder and its separate JSON plan.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,9 +11,10 @@ local player = Players.LocalPlayer
 local CONFIG = {
     CatalogName = nil, -- Auto-select a plain rectangular Part from the live manifest.
     Origin = nil, -- Map center at the asphalt surface. nil: grass beneath you.
+    StartAt = "pit-entry", -- Your standing point maps to the grey apron. "center": legacy centre placement.
     Altitude = 0,
     GroundY = nil, -- Optional top height of your existing grass platform.
-    GroundClearance = 0.02,
+    GroundClearance = 0.25, -- Slight lift above the existing grass plate.
     YawDegrees = 0,
     Scale = 1, -- Additional multiplier; the flat plan already has a 2x layout and wider lanes.
     PlacementInterval = 0.10,
@@ -46,6 +47,15 @@ local PLAN = document.parts
 assert(type(meta) == "table" and meta.format == "sepang-flat-v1", "Sepang: incompatible plan. Copy the matching ribbon builder and plan together.")
 assert(type(PLAN) == "table" and #PLAN > 0 and #PLAN <= CONFIG.MaxObjects and meta.partCount == #PLAN, "Sepang: invalid plan count or exceeded " .. CONFIG.MaxObjects .. "-object budget")
 local function finite(n) return type(n) == "number" and n == n and math.abs(n) < math.huge end
+local anchor = meta.placementAnchor
+local HAS_PLACEMENT_ANCHOR = anchor ~= nil
+local PLAN_ANCHOR = Vector3.new(0,0,0)
+if anchor then
+    assert(type(anchor) == "table" and type(anchor.position) == "table" and #anchor.position == 3, "Sepang: invalid placement anchor")
+    for _, n in ipairs(anchor.position) do assert(finite(n), "Sepang: invalid placement anchor coordinates") end
+    assert(anchor.position[2] == 0, "Sepang: the standing anchor must be on the flat surface")
+    PLAN_ANCHOR = Vector3.new(anchor.position[1],0,anchor.position[3])
+end
 local PALETTE = {}
 assert(type(meta.palette) == "table" and #meta.palette > 0, "Sepang: missing palette")
 for i, entry in ipairs(meta.palette) do
@@ -216,7 +226,10 @@ local function resolveOrigin()
         groundY = hit.Position.Y
     end
     assert(type(groundY) == "number" and groundY == groundY and math.abs(groundY) < math.huge, "GroundY must be finite")
-    return CFrame.new(root.Position.X, groundY + CONFIG.Altitude + CONFIG.GroundClearance, root.Position.Z) * CFrame.Angles(0, math.rad(CONFIG.YawDegrees), 0)
+    assert(CONFIG.StartAt == "pit-entry" or CONFIG.StartAt == "center", "StartAt must be pit-entry or center")
+    local frame = CFrame.new(root.Position.X, groundY + CONFIG.Altitude + CONFIG.GroundClearance, root.Position.Z) * CFrame.Angles(0, math.rad(CONFIG.YawDegrees), 0)
+    if CONFIG.StartAt == "pit-entry" then return frame * CFrame.new(PLAN_ANCHOR * -CONFIG.Scale) end
+    return frame
 end
 local function geometry(index, cf, scale)
     local p = PLAN[index]
@@ -330,6 +343,15 @@ function api.Preview()
         part.BottomSurface = Enum.SurfaceType.Smooth
         part.Parent = preview
         if i % 100 == 0 then task.wait() end
+    end
+    if HAS_PLACEMENT_ANCHOR then
+        local marker = Instance.new("Part")
+        marker.Name = "StandingPoint_PREVIEW_ONLY"
+        marker.Anchored, marker.CanCollide, marker.CanTouch, marker.CanQuery = true, false, false, false
+        marker.Size = Vector3.new(8,4,8) * scale
+        marker.CFrame = cf * CFrame.new((PLAN_ANCHOR + Vector3.new(0,2,0)) * scale)
+        marker.Color, marker.Material = Color3.fromRGB(230,60,55), Enum.Material.SmoothPlastic
+        marker.Parent = preview
     end
     end)
     previewing = false

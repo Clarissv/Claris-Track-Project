@@ -8,7 +8,7 @@ try {
     foreach ($name in @('sepang-builder.lua','sepang-plan.json','sepang-diagnose.lua','sepang-checkpoint.lua','sepang-resume.lua')) {
         [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $PSScriptRoot $name), ('SepangFlat/' + $name), [IO.Compression.CompressionLevel]::Optimal)
     }
-    foreach ($name in @('sepang-run.lua','README.md','THIRD-PARTY.txt','sepang-3d-viewer.html','build-3d.png','elevation-profile.svg')) {
+    foreach ($name in @('sepang-run.lua','README.md','THIRD-PARTY.txt','sepang-3d-viewer.html','build-3d.png','build-start-point.png','elevation-profile.svg')) {
         [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $PSScriptRoot $name), $name, [IO.Compression.CompressionLevel]::Optimal)
     }
     [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, (Join-Path $PSScriptRoot 'source/LICENSE'), 'source/LICENSE', [IO.Compression.CompressionLevel]::Optimal)

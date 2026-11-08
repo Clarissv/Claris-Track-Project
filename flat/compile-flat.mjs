@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {add,sub,mul,dot,unit} from './track-geometry.mjs';
 import {round,boxBasis,boxCorners,makeSlab,adaptiveSegments} from './geometry.mjs';
 import {writeArtifacts} from './render-ribbons.mjs';
 import {packageRuntime} from './package-ribbons.mjs';
 import {makeRelease} from './make-github-release.mjs';
+import {tidyRunoffProfiles,runoffHeight} from './tidy-runoff.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 
 export function flatPoints(reference) {
@@ -33,6 +35,27 @@ export function coverLongitudinal(slab,line,start,end) {
   for(let i=start;i<=end;i++)slab[5]=Math.max(slab[5],2*Math.abs(dot(sub(line[i].pos,slab.slice(0,3)),basis.back))+.02);
   slab[5]=round(slab[5]);
   return slab;
+}
+export function placementAnchor(parts,groups) {
+  const entry=parts[groups.pitLane[0]],concrete=groups.runoff.filter(i=>parts[i][6]===3&&parts[i][3]>=16&&parts[i][5]>=8);
+  const nearest=concrete.sort((a,b)=>Math.hypot(parts[a][0]-entry[0],parts[a][2]-entry[2])-Math.hypot(parts[b][0]-entry[0],parts[b][2]-entry[2]))[0];
+  if(nearest===undefined)throw Error('No concrete apron beside pit entry');
+  const runoff=groups.runoff,seed=runoff.indexOf(nearest);
+  const connected=(a,b)=>{
+    const p=parts[a],q=parts[b];
+    return q[6]===3&&Math.abs(p[3]-q[3])<2&&dot(boxBasis(p).right,boxBasis(q).right)>.98&&Math.hypot(p[0]-q[0],p[2]-q[2])<(p[5]+q[5])/2+1.5;
+  };
+  let first=seed,last=seed;
+  while(first>0&&connected(runoff[first],runoff[first-1]))first--;
+  while(last+1<runoff.length&&connected(runoff[last],runoff[last+1]))last++;
+  let x=0,z=0,total=0;
+  const partIndices=runoff.slice(first,last+1);
+  for(const i of partIndices){const p=parts[i],weight=p[3]*p[5];x+=p[0]*weight;z+=p[2]*weight;total+=weight;}
+  let point=[x/total,0,z/total];
+  const lane=groups.pitLane.map(i=>parts[i]).sort((a,b)=>Math.hypot(a[0]-point[0],a[2]-point[2])-Math.hypot(b[0]-point[0],b[2]-point[2]))[0];
+  const right=boxBasis(lane).right,side=dot(sub(point,lane.slice(0,3)),right)<0?-1:1;
+  point=add(point,mul(right,side*12));
+  return {name:'pit-entry-apron',label:'Grey apron beside pit entry',position:[round(point[0]),0,round(point[2])],partIndices,pitEntry:[entry[0],0,entry[2]]};
 }
 export function makeKerbSlab(a,b,width,rise,side,thickness,color) {
   const dx=b.pos[0]-a.pos[0],dz=b.pos[2]-a.pos[2],length=Math.hypot(dx,dz);
@@ -78,11 +101,58 @@ function limitFactor(segments,line,maxVariation=.18) {
   }
   return result;
 }
+function compileRunoff(points,profiles,settings,push) {
+  const chains=[],tails=new Map();
+  for(const profile of [...profiles].sort((a,b)=>a.start-b.start||a.side-b.side||a.offset-b.offset)) {
+    const {side,start,end,offset,width,color}=profile;
+    if(![-1,1].includes(side)||!Number.isInteger(start)||!Number.isInteger(end)||start<0||end>=points.length||start>=end||![4,8,9,10,11].includes(color)||!Number.isFinite(offset)||!Number.isFinite(width)||width<2||offset<-.2)throw Error('Invalid tidied runoff profile');
+    const key=[side,color,start].join(':'),candidates=tails.get(key)??[];
+    const chain=candidates.sort((a,b)=>Math.abs(a.at(-1).offset-offset)+Math.abs(a.at(-1).width-width)-Math.abs(b.at(-1).offset-offset)-Math.abs(b.at(-1).width-width)).find(c=>Math.abs(c.at(-1).offset-offset)<=10&&Math.abs(c.at(-1).width-width)<=12);
+    const next=chain??[];
+    if(!chain)chains.push(next);else candidates.splice(candidates.indexOf(chain),1);
+    next.push(profile);
+    const target=[side,color,end].join(':');
+    if(!tails.has(target))tails.set(target,[]);
+    tails.get(target).push(next);
+  }
+  const spans=[];
+  for(const chain of chains) {
+    for(let i=0;i<chain.length;) {
+      const first=i;let last=i+1,lo=chain[i].offset,hi=lo,minWidth=chain[i].width,maxWidth=minWidth;
+      while(last<chain.length&&points[chain[last].end].s-points[chain[first].start].s<=settings.runoffMaxLength&&Math.max(hi,chain[last].offset)-Math.min(lo,chain[last].offset)<=settings.runoffWidthVariation&&Math.max(maxWidth,chain[last].width)-Math.min(minWidth,chain[last].width)<=settings.runoffWidthVariation&&dot(points[chain[first].start].right,points[chain[last].end].right)>Math.cos(settings.runoffMaxTurnDegrees*Math.PI/180)) {
+        lo=Math.min(lo,chain[last].offset);hi=Math.max(hi,chain[last].offset);minWidth=Math.min(minWidth,chain[last].width);maxWidth=Math.max(maxWidth,chain[last].width);last++;
+      }
+      const run=chain.slice(first,last),{side,start,color}=run[0],end=run.at(-1).end,offset=run.reduce((n,p)=>n+p.offset,0)/run.length,outer=run.reduce((n,p)=>n+p.offset+p.width,0)/run.length,width=outer-offset;
+      i=last;if(width<2)continue;
+      let profileIndex=0;
+      const line=points.slice(start,end+1).map((p,k)=>{
+        while(profileIndex+1<run.length&&start+k>=run[profileIndex+1].start)profileIndex++;
+        const section=run[profileIndex],shift=section.offset+section.width/2;
+        return {...p,pos:add(p.pos,mul(p.right,side*((side>0?p.wr:p.wl)+shift))),wr:section.width/2,wl:section.width/2};
+      });
+      const delta=sub(line.at(-1).pos,line[0].pos),source=sub(points[end].pos,points[start].pos);
+      if(Math.hypot(...delta)<.02||dot(unit(delta),unit(source))<.3)continue;
+      const slab=makeSlab(line[0],line.at(-1),width,0,.4,color,runoffHeight(color),.04),basis=boxBasis(slab);
+      for(const p of line)for(const across of [-p.wl,p.wr]) {
+        const d=sub(add(p.pos,mul(p.right,across)),slab.slice(0,3));
+        slab[3]=Math.max(slab[3],2*Math.abs(dot(d,basis.right))+.02);
+        slab[5]=Math.max(slab[5],2*Math.abs(dot(d,basis.back))+.02);
+      }
+      slab[3]=round(slab[3]);slab[5]=round(slab[5]);
+      const index=push(slab);spans.push({index,side,start,end,offset:round(offset),width:round(width),color,height:runoffHeight(color),profileCount:run.length});
+    }
+  }
+  return spans;
+}
 export function compileFlat(reference,options={}) {
-  const settings={maxParts:11000,roadMaxLength:48,roadTolerance:.02,roadMaxTurnDegrees:.75,markingTolerance:.08,markingMaxLength:96,markingMaxTurnDegrees:2,curbWidth:3.2,curbStripe:16,curbMaxLength:16,curbTolerance:.06,curbMaxTurnDegrees:4,curbTaperLength:12,curbProfile:[0,.12],curbThickness:.12,roadThickness:1,paintHeight:.004,groundClearance:.02,...options};
-  for(const key of ['maxParts','roadMaxLength','roadTolerance','roadMaxTurnDegrees','markingTolerance','markingMaxLength','markingMaxTurnDegrees','curbWidth','curbStripe','curbMaxLength','curbTolerance','curbMaxTurnDegrees','curbTaperLength','curbThickness','roadThickness','paintHeight','groundClearance'])if(!Number.isFinite(settings[key])||settings[key]<=0)throw Error('Invalid flat setting: '+key);
+  const {kerbTrace:providedTrace,...settingOptions}=options;
+  const settings={maxParts:11000,roadMaxLength:48,roadTolerance:.02,roadMaxTurnDegrees:.75,markingTolerance:.12,markingMaxLength:96,markingMaxTurnDegrees:3,curbWidth:3.2,curbMaxLength:16,curbTolerance:.06,curbMaxTurnDegrees:4,curbTaperLength:12,curbProfile:[0,.12],curbThickness:.12,roadThickness:1,paintHeight:.004,groundClearance:.25,runoffMaxLength:128,runoffWidthVariation:8,runoffMaxTurnDegrees:4.5,...settingOptions};
+  for(const key of ['maxParts','roadMaxLength','roadTolerance','roadMaxTurnDegrees','markingTolerance','markingMaxLength','markingMaxTurnDegrees','curbWidth','curbMaxLength','curbTolerance','curbMaxTurnDegrees','curbTaperLength','curbThickness','roadThickness','paintHeight','groundClearance','runoffMaxLength','runoffWidthVariation','runoffMaxTurnDegrees'])if(!Number.isFinite(settings[key])||settings[key]<=0)throw Error('Invalid flat setting: '+key);
   if(settings.maxParts>11000||settings.curbProfile.length<2||settings.curbProfile[0]!==0||settings.curbProfile.some(h=>!Number.isFinite(h)||h<0||h>.2))throw Error('Invalid flat budget or low kerb profile');
   const points=flatPoints(reference),parts=[],groups={},roadSegments=[],edgeMarkingSegments=[],kerbSpans=[],kerbZones=[],kerbRuns=[],sideArcs={};
+  const trace=providedTrace??JSON.parse(fs.readFileSync(path.join(here,'source/sepang-kerbs.json'),'utf8'));
+  if(trace.format!=='sepang-kerb-trace-v1'||trace.sourceSha256!==reference.meta.sourceSha256||trace.centerlineSha256!==crypto.createHash('sha256').update(JSON.stringify(reference.centerline)).digest('hex')||!trace.zones?.length||!trace.runoff?.profiles?.length)throw Error('Missing or incompatible model surface trace');
+  const traceSha256=crypto.createHash('sha256').update(JSON.stringify(trace)).digest('hex');
   for(const side of [-1,1]) {
     const offset=p=>add(p.pos,mul(p.right,side*((side>0?p.wr:p.wl)+settings.curbWidth/2)));
     const arc=[0];
@@ -103,17 +173,13 @@ export function compileFlat(reference,options={}) {
       edgeMarkingSegments.push([side,a,b]);
     }
   }
-  const count=points.length-1;
-  for(let i=0;i<count;) {
-    if(Math.abs(points[i].curvature)<.00175){i++;continue;}
-    const start=i;let end=i+1;
-    while(end<count&&Math.abs(points[end].curvature)>=.00175)end++;
-    i=end;
-    if(points[end].s-points[start].s<2)continue;
-    kerbZones.push([start,end]);
-    for(const side of [-1,1])for(const [sideStart,sideEnd] of safeSideRuns(points,start,end,side,settings.curbWidth)) {
+  for(const zone of trace.zones) {
+    const {start,end,side}=zone;
+    if(![-1,1].includes(side)||!Number.isInteger(start)||!Number.isInteger(end)||start<0||end>=points.length||end<=start||zone.samples.length!==end-start||zone.samples.some((p,i)=>p[0]!==start+i||![4,9].includes(p[3])))throw Error('Invalid reference kerb zone');
+    kerbZones.push([start,end,side,zone.id]);
+    for(const [sideStart,sideEnd] of safeSideRuns(points,start,end,side,settings.curbWidth)) {
       const arc=sideArcs[side];
-      kerbRuns.push({side,start:sideStart,end:sideEnd,arc:arc.slice(sideStart,sideEnd+1).map(s=>s-arc[sideStart])});
+      kerbRuns.push({side,start:sideStart,end:sideEnd,referenceZone:zone.id,arc:arc.slice(sideStart,sideEnd+1).map(s=>s-arc[sideStart])});
       const bands=settings.curbProfile.length-1,bandWidth=settings.curbWidth/bands;
       for(let band=0;band<bands;band++) {
         const low=settings.curbProfile[band],high=settings.curbProfile[band+1],bandOffset=(band+.5)*bandWidth;
@@ -124,33 +190,42 @@ export function compileFlat(reference,options={}) {
           return {...p,pos,wr:bandWidth/2,wl:bandWidth/2,factor};
         });
         for(let first=sideStart;first<sideEnd;) {
-          const color=Math.floor((points[first].s+points[first+1].s)/2/settings.curbStripe)%2?4:9;
+          const color=zone.samples[first-start][3];
           let last=first+1;
-          while(last<sideEnd&&(Math.floor((points[last].s+points[last+1].s)/2/settings.curbStripe)%2?4:9)===color)last++;
+          while(last<sideEnd&&zone.samples[last-start][3]===color)last++;
           const run=line.slice(first,last+1);
           const spans=limitFactor(adaptiveSegments(run,settings.curbMaxLength,settings.curbTolerance,settings.curbMaxTurnDegrees*Math.PI/180,.002),run);
           for(const [a,b] of spans) {
             const index=push('curbs',coverKerb(makeKerbSlab(run[a],run[b],bandWidth,high-low,side,settings.curbThickness,color),run,a,b,bandWidth,high-low,side));
-            kerbSpans.push({index,side,start:first+a,end:first+b,band,zoneStart:sideStart,zoneEnd:sideEnd});
+            kerbSpans.push({index,side,start:first+a,end:first+b,band,zoneStart:sideStart,zoneEnd:sideEnd,referenceZone:zone.id,color});
           }
           first=last;
         }
       }
     }
   }
+  const auxiliary=[],auxGroups={};
   for(const [group,list] of Object.entries(reference.auxiliary)) {
     for(const old of list) {
       const p=[...old],horizontal=Math.hypot(old[7],old[9]);
       p[3]=round(old[3]*horizontal);p[7]=round(old[7]/horizontal);p[8]=0;p[9]=round(old[9]/horizontal);p[10]=0;p[11]=1;p[12]=0;
       p[1]=group==='pitWall'?p[4]/2:-p[4]/2+(['pitMarkings','startFinish'].includes(group)?settings.paintHeight:0);
-      push(group,p);
+      (auxGroups[group]??=[]).push(auxiliary.length);auxiliary.push(p);
     }
   }
+  const apron=placementAnchor(auxiliary,auxGroups),apronSet=new Set(apron.partIndices),apronIndices=[];
+  const tidiedRunoff=tidyRunoffProfiles(points,trace.runoff.profiles);
+  const runoffSpans=compileRunoff(points,tidiedRunoff.profiles,settings,p=>push('runoff',p));
+  for(const [group,indices] of Object.entries(auxGroups))for(const i of indices){if(group==='runoff'&&!apronSet.has(i))continue;const index=push(group,auxiliary[i]);if(group==='runoff')apronIndices.push(index);}
   for(const p of parts)if(p.length!==13||p.some(v=>!Number.isFinite(v))||p.slice(3,6).some(v=>v<.001||v>2048))throw Error('Invalid flat part');
   const corners=parts.flatMap(boxCorners),bounds={min:[0,1,2].map(k=>Math.min(...corners.map(p=>p[k]))),max:[0,1,2].map(k=>Math.max(...corners.map(p=>p[k])))};
   const groupCounts=Object.fromEntries(Object.entries(groups).map(([name,list])=>[name,list.length]));
   if(parts.length>settings.maxParts)throw Error('Flat plan exceeds budget: '+JSON.stringify({parts:parts.length,groups:groupCounts}));
-  const meta={format:'sepang-flat-v1',variant:'flat',scope:'level circuit and pit lane, white lines, low ramped and tapered kerbs, level runoff and pit wall; no new grass, buildings or stands',settings:{...reference.meta.settings,...settings,flat:true,banking:false},sourceUrl:reference.meta.sourceUrl,sourceSha256:reference.meta.sourceSha256,sourcePlanSha256:reference.sourcePlanSha256,centerlineSha256:reference.meta.centerlineSha256,alignment:reference.meta.alignment,lapLengthMetres:reference.meta.lapLengthMetres,lapLengthStuds:points.at(-1).s,partCount:parts.length,palette:reference.meta.palette,planBounds:bounds,width:round(bounds.max[0]-bounds.min[0]),depth:round(bounds.max[2]-bounds.min[2]),outputScale:reference.meta.outputScale,groupCounts,groups,roadSegments,edgeMarkingSegments,kerbSpans,kerbZones,kerbRuns,groundReference:'asphalt top; surface is 0.02 studs above the grass plate to prevent coplanar flicker',groundLift:0,retainedHeightRange:[0,0],pitLane:reference.meta.pitLane,limitations:['Flat racing variant; source banking and elevation are intentionally absent.','Rectangular pieces retain small overlaps and angular outside edges; the asphalt top planes are level.','Kerbs use a low piecewise ramp with tapered ends; exact real-world kerb profiles and extents are approximate.','Paint is 0.004 studs above the road to remain visible.','Game server saving and live driving still need verification.']};
+  const meta={format:'sepang-flat-v1',variant:'flat',scope:'level circuit and pit lane, white lines, model-derived low kerbs and gravel/painted runoff, pit wall; no new grass, buildings or stands',settings:{...reference.meta.settings,...settings,flat:true,banking:false},sourceUrl:reference.meta.sourceUrl,sourceSha256:reference.meta.sourceSha256,sourcePlanSha256:reference.sourcePlanSha256,centerlineSha256:reference.meta.centerlineSha256,alignment:reference.meta.alignment,lapLengthMetres:reference.meta.lapLengthMetres,lapLengthStuds:points.at(-1).s,partCount:parts.length,palette:reference.meta.palette,planBounds:bounds,width:round(bounds.max[0]-bounds.min[0]),depth:round(bounds.max[2]-bounds.min[2]),outputScale:reference.meta.outputScale,groupCounts,groups,roadSegments,edgeMarkingSegments,kerbSpans,kerbZones,kerbRuns,runoffSpans,surfaceTrace:{file:'source/sepang-kerbs.json',sha256:traceSha256,kerbMaterials:trace.materialNames,runoffMaterials:trace.runoff.materialNames,statistics:trace.statistics},groundReference:'asphalt top; surface is 0.25 studs above the grass plate',groundLift:0,retainedHeightRange:[0,0],pitLane:reference.meta.pitLane,limitations:['Flat racing variant; source banking and elevation are intentionally absent.','Rectangular pieces retain small overlaps and angular outside edges; the asphalt top planes are level.','Kerb side, extent and stripe colour and runoff bands come from the supplied model, projected onto the widened CSV layout; no survey or recent imagery validation.','Kerbs retain a custom low ramp and tapered ends for driving; widths, profiles and runoff boundaries are approximations.','Paint is 0.004 studs above the road to remain visible.','Game server saving and live driving still need verification.']};
+  meta.runoffSections=tidiedRunoff.sections;
+  meta.accessoryCleanup={...tidiedRunoff.report,runoffParts:runoffSpans.length,runoffHeightRange:[-.008,-.004],method:'Close road-to-runoff and inter-band slivers, discard isolated thin fragments, smooth sampled boundaries and combine compatible sections into larger blocks. Runoff overlaps sit just below the asphalt and kerbs.'};
+  meta.limitations.push('Runoff footprints are tidied adaptations of the model, including filled grass slivers; horizontal colour bands use 0.001-stud offsets between -0.008 and -0.004 to avoid flicker at overlaps.');
+  meta.placementAnchor=placementAnchor(parts,{...groups,runoff:apronIndices});
   return {meta,parts,centerline:points.map(p=>[...p.pos,p.wr,p.wl,p.s,0,1,0])};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {

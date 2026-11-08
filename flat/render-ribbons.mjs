@@ -6,7 +6,9 @@ import { dot, unit } from './track-geometry.mjs';
 const faces=[[[1,0,0],[1,3,7,5]],[[-1,0,0],[0,4,6,2]],[[0,1,0],[2,6,7,3]],[[0,-1,0],[0,1,5,4]],[[0,0,1],[4,5,7,6]],[[0,0,-1],[0,2,3,1]]];
 export function previewParts(plan) {
   const b=plan.meta.planBounds;
-  return [[(b.min[0]+b.max[0])/2,-0.52,(b.min[2]+b.max[2])/2,plan.meta.width+160,1,plan.meta.depth+160,5,1,0,0,0,1,0],...plan.parts];
+  const parts=[[(b.min[0]+b.max[0])/2,-(plan.meta.settings?.groundClearance??.25)-.5,(b.min[2]+b.max[2])/2,plan.meta.width+160,1,plan.meta.depth+160,5,1,0,0,0,1,0],...plan.parts];
+  if(plan.meta.placementAnchor){const p=plan.meta.placementAnchor.position;parts.push([p[0],2,p[2],8,4,8,9,1,0,0,0,1,0]);}
+  return parts;
 }
 export function render(plan,width=1400,height=900,view={}) {
   const parts=previewParts(plan),palette=plan.meta.palette;
@@ -40,6 +42,9 @@ export function writeArtifacts(directory,plan) {
   fs.writeFileSync(path.join(directory,'build-topdown.png'),render(plan,1400,1200,{top:true}));
   const start=plan.centerline[0].slice(0,3);
   fs.writeFileSync(path.join(directory,'build-3d-detail.png'),render(plan,1400,900,{target:start,span:450*(plan.meta.outputScale??1)}));
+  const kerb=plan.meta.kerbRuns.find(run=>run.arc.at(-1)>100&&Math.abs(plan.centerline[run.start][0]-plan.centerline[run.end][0])>20);
+  if(kerb){const index=(kerb.start+kerb.end)>>1,p=plan.centerline[index],a=plan.centerline[index-1],b=plan.centerline[index+1],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz),offset=kerb.side*((kerb.side>0?p[3]:p[4])+plan.meta.settings.curbWidth/2);fs.writeFileSync(path.join(directory,'build-kerb-detail.png'),render(plan,1400,900,{target:[p[0]+dz/length*offset,.06,p[2]-dx/length*offset],span:140}));}
+  if(plan.meta.placementAnchor)fs.writeFileSync(path.join(directory,'build-start-point.png'),render(plan,1400,900,{top:true,target:plan.meta.placementAnchor.position,span:500}));
   const template=fs.readFileSync(path.join(directory,'viewer-template.html'),'utf8');
   fs.writeFileSync(path.join(directory,'sepang-3d-viewer.html'),template.replace('/* GENERATED_DATA */',()=>`const PLAN=${JSON.stringify(plan)};`));
   const heights=plan.centerline.map(p=>p[1]),lo=Math.min(...heights),hi=Math.max(...heights),total=plan.centerline.at(-1)[5],poly=plan.centerline.map(p=>`${(60+p[5]/total*1080).toFixed(2)},${(250-(p[1]-lo)/(hi-lo||1)*180).toFixed(2)}`).join(' ');

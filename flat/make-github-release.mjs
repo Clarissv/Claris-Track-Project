@@ -14,10 +14,10 @@ export function makeRelease(directory) {
     }
   }
   const plan=JSON.parse(fs.readFileSync(path.join(directory,'sepang-plan.json'),'utf8'));
-  const {format,partCount,palette,planBounds,sourceSha256,centerlineSha256}=plan.meta;
+  const {format,partCount,palette,planBounds,sourceSha256,centerlineSha256,placementAnchor}=plan.meta;
   const assets={
     'sepang-builder.lua':fs.readFileSync(path.join(directory,'sepang-builder.lua')),
-    'runtime-plan.json':Buffer.from(JSON.stringify({meta:{format,partCount,palette,planBounds,sourceSha256,centerlineSha256},parts:plan.parts})),
+    'runtime-plan.json':Buffer.from(JSON.stringify({meta:{format,partCount,palette,planBounds,sourceSha256,centerlineSha256,placementAnchor},parts:plan.parts})),
     'sepang-checkpoint.lua':fs.readFileSync(path.join(directory,'sepang-checkpoint.lua')),
     'sepang-diagnose.lua':fs.readFileSync(path.join(directory,'sepang-diagnose.lua')),
   };

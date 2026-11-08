@@ -17,6 +17,15 @@ local PLAN = document.parts
 assert(type(meta) == "table" and meta.format == "sepang-flat-v1", "Sepang: incompatible plan. Copy the matching ribbon builder and plan together.")
 assert(type(PLAN) == "table" and #PLAN > 0 and #PLAN <= CONFIG.MaxObjects and meta.partCount == #PLAN, "Sepang: invalid plan count or exceeded " .. CONFIG.MaxObjects .. "-object budget")
 local function finite(n) return type(n) == "number" and n == n and math.abs(n) < math.huge end
+local anchor = meta.placementAnchor
+local HAS_PLACEMENT_ANCHOR = anchor ~= nil
+local PLAN_ANCHOR = Vector3.new(0,0,0)
+if anchor then
+    assert(type(anchor) == "table" and type(anchor.position) == "table" and #anchor.position == 3, "Sepang: invalid placement anchor")
+    for _, n in ipairs(anchor.position) do assert(finite(n), "Sepang: invalid placement anchor coordinates") end
+    assert(anchor.position[2] == 0, "Sepang: the standing anchor must be on the flat surface")
+    PLAN_ANCHOR = Vector3.new(anchor.position[1],0,anchor.position[3])
+end
 local PALETTE = {}
 assert(type(meta.palette) == "table" and #meta.palette > 0, "Sepang: missing palette")
 for i, entry in ipairs(meta.palette) do

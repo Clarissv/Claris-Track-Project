@@ -1,7 +1,7 @@
 -- Flat Sepang circuit loader. This opens the builder panel; preview before building.
 local mode = ...
 assert(mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose", "Sepang: expected build, resume, checkpoint or diagnose")
-local BASE = "https://raw.githubusercontent.com/Clarissv/Sepang/main/flat/releases/a496e4cf7cd06f1c3f08/"
+local BASE = "https://raw.githubusercontent.com/Clarissv/Sepang/main/flat/releases/37f742b6e23af1d8e6dd/"
 local CHECKPOINT = "sepang-flat-checkpoint.json"
 local function download(name)
     local url = BASE .. name

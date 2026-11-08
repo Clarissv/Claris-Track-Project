@@ -12,7 +12,7 @@
   #error{position:absolute;bottom:24px;left:24px;color:#ffc79c}
 </style>
 <canvas id="view"></canvas>
-<aside><h1>Flat Sepang in 3D</h1><p id="stats"></p><button id="overview">Overview</button><button id="detail">Main straight</button><small>Drag to orbit · Scroll to zoom<br>Right-drag or Shift-drag to pan</small><p>Flat circuit, low ramped kerbs, runoff and an approximate pit lane. The green floor represents your existing platform.</p></aside>
+<aside><h1>Flat Sepang in 3D</h1><p id="stats"></p><button id="overview">Overview</button><button id="detail">Main straight</button><button id="startpoint">Standing point</button><small>Drag to orbit · Scroll to zoom<br>Right-drag or Shift-drag to pan</small><p>Flat circuit, low ramped kerbs, runoff and an approximate pit lane. The green floor represents your existing platform.</p><p>The red marker shows where you stand beside pit entry.</p></aside>
 <div id="error"></div>
 <script>
 /* GENERATED_DATA */
@@ -37,8 +37,9 @@ for(const [normal,face] of quads)for(const i of [face[0],face[1],face[2],face[0]
 const geometry=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,geometry);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.STATIC_DRAW);
 for(let i=0;i<2;i++){gl.enableVertexAttribArray(i);gl.vertexAttribPointer(i,3,gl.FLOAT,false,24,i*12);}
 const bounds=PLAN.meta.planBounds;
-const ground=[(bounds.min[0]+bounds.max[0])/2,-.52,(bounds.min[2]+bounds.max[2])/2,PLAN.meta.width+160,1,PLAN.meta.depth+160,5,1,0,0,0,1,0];
+const ground=[(bounds.min[0]+bounds.max[0])/2,-(PLAN.meta.settings?.groundClearance??.25)-.5,(bounds.min[2]+bounds.max[2])/2,PLAN.meta.width+160,1,PLAN.meta.depth+160,5,1,0,0,0,1,0];
 const visible=[ground,...PLAN.parts];
+if(PLAN.meta.placementAnchor){const p=PLAN.meta.placementAnchor.position;visible.push([p[0],2,p[2],8,4,8,9,1,0,0,0,1,0]);}
 const data=new Float32Array(visible.length*15);
 visible.forEach((p,i)=>data.set([...p.slice(0,6),...PLAN.meta.palette[p[6]-1].rgb.map(c=>c/255),...p.slice(7,13)],i*15));
 const instances=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,instances);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);
@@ -60,6 +61,7 @@ canvas.onpointerup=()=>drag=null;canvas.onpointercancel=()=>drag=null;canvas.onc
 canvas.addEventListener('wheel',e=>{e.preventDefault();distance=Math.max(10,Math.min(10000,distance*Math.exp(e.deltaY*.001)));draw();},{passive:false});
 document.getElementById('overview').onclick=()=>{target=[...center];distance=span;yaw=Math.PI/4;pitch=.48;draw();};
 document.getElementById('detail').onclick=()=>{target=PLAN.centerline[0].slice(0,3);distance=430*(PLAN.meta.outputScale??1);yaw=Math.PI/4;pitch=.42;draw();};
+document.getElementById('startpoint').onclick=()=>{target=[...(PLAN.meta.placementAnchor?.position??PLAN.centerline[0].slice(0,3))];distance=500;yaw=Math.PI/4;pitch=.7;draw();};
 window.onresize=draw;draw();
 </script>
 </html>

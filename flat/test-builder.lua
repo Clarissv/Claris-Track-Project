@@ -29,7 +29,7 @@ function cfmeta:Inverse()
     return cf(-self.Position:Dot(r),-self.Position:Dot(u),-self.Position:Dot(b),r.X,r.Y,r.Z,u.X,u.Y,u.Z,b.X,b.Y,b.Z)
 end
 function cfmeta:GetComponents() local r,u,b=self.RightVector,self.UpVector,self.BackVector;return self.X,self.Y,self.Z,r.X,u.X,b.X,r.Y,u.Y,b.Y,r.Z,u.Z,b.Z end
-CFrame = { new = cf, Angles = function() return cf() end, lookAt = function(position) return cf(position) end,
+CFrame = { new = cf, Angles = function(_,yaw) return cf(0,0,0,math.cos(yaw),0,math.sin(yaw),0,1,0,-math.sin(yaw),0,math.cos(yaw)) end, lookAt = function(position) return cf(position) end,
     fromMatrix = function(position, right, up) local result = cf(position); result.RightVector, result.UpVector = right, up; result.BackVector=vector(right.Y*up.Z-right.Z*up.Y,right.Z*up.X-right.X*up.Z,right.X*up.Y-right.Y*up.X); return result end }
 typeof = function(v) return type(v) == "table" and v._type or type(v) end
 Enum = { CameraType = { Scriptable = "Scriptable", Custom = "Custom" }, PartType = { Block = "Block" }, Material = { Asphalt = "Asphalt", SmoothPlastic = "SmoothPlastic", Concrete = "Concrete", Grass = "Grass", Sand = "Sand" }, SurfaceType = { Smooth = "Smooth" }, Font = { GothamBold = "GothamBold", Gotham = "Gotham", GothamMedium = "GothamMedium" } }
@@ -230,7 +230,7 @@ root.CFrame = cf(500, 5, 500)
 api.Build()
 assert(#calls == 2 and api.State == "complete" and api.NextIndex == 3, "Build did not confirm both parts")
 assert(calls[1][1] == "Block" and calls[1][4] == 0 and calls[1][7] == "" and calls[1][8] == true, "Placement payload order differs from PlaceTool")
-assert(calls[1][2].X == 0 and math.abs(calls[1][2].Y - 2.52) < 0.000001, "Build must stay at the captured character-level reference height")
+assert(calls[1][2].X == 0 and math.abs(calls[1][2].Y - 2.75) < 0.000001, "Build must retain the captured grass height plus slight clearance")
 assert(calls[1][2].RightVector.Y > 0.09, "Road slope was lost in the placement frame")
 assert(root.CFrame.X == 500 and root.CFrame.Z == 500 and not root.Anchored, "Completion must restore the character without shifting the map")
 api.Build()
@@ -241,11 +241,36 @@ assert(workspace.CurrentCamera.CameraType == "Custom", "Back camera must restore
 api = fresh()
 api.Config.GroundY = 25
 local floorTarget = api.GetTarget(1)
-assert(math.abs(floorTarget.origin.Y-25.02)<0.000001, "GroundY must override the platform raycast")
+assert(math.abs(floorTarget.origin.Y-25.25)<0.000001, "GroundY must override the platform raycast and retain the clearance")
 api = fresh()
 api.Config.Origin = cf(100,50,200)
 floorTarget = api.GetTarget(1)
 assert(floorTarget.origin.X == 100 and floorTarget.origin.Y == 50 and floorTarget.origin.Z == 200, "Explicit Origin must retain the supplied map center")
+fixtureDocument.meta.placementAnchor = { position = {100,0,-40} }
+api = fresh()
+root.CFrame = cf(500,5,700)
+api.Config.Scale, api.Config.YawDegrees = 2,90
+local anchoredTarget = api.GetTarget(1)
+local standingPoint = anchoredTarget.origin * CFrame.new(200,0,-80)
+assert(math.abs(standingPoint.X-500)<.000001 and math.abs(standingPoint.Z-700)<.000001 and math.abs(standingPoint.Y-3.25)<.000001, "Pit-entry anchor must land above the standing point with yaw and scale applied")
+root.CFrame = cf(800,5,900)
+assert((api.GetTarget(2).origin.Position-anchoredTarget.origin.Position).Magnitude<.000001, "Moving after capturing the origin must not move the anchor")
+api = fresh()
+api.Config.StartAt = "center"
+assert(api.GetTarget(1).origin.X == 0 and api.GetTarget(1).origin.Z == 0, "Legacy centre placement must remain available")
+api = fresh()
+api.Config.Origin = cf(100,50,200)
+assert(api.GetTarget(1).origin.X == 100 and api.GetTarget(1).origin.Z == 200, "Explicit origin must bypass the standing-point offset")
+api = fresh()
+local anchoredPreview = api.Preview()
+local marker = anchoredPreview:FindFirstChild("StandingPoint_PREVIEW_ONLY")
+assert(marker and not marker.CanCollide and #calls == 0, "The standing marker must stay local and noncolliding")
+assert(marker.CFrame.X == 0 and marker.CFrame.Z == 0, "The preview marker must show the captured standing point")
+api.ClearPreview()
+fixtureDocument.meta.placementAnchor = { position = {100,1,-40} }
+local malformedAnchor = pcall(loadBuilder)
+assert(not malformedAnchor and _G.SepangFlatBuilder == api, "Invalid anchor heights must fail before replacing the current builder")
+fixtureDocument.meta.placementAnchor = nil
 api = fresh()
 api.Config.Origin = cf(1500,20,-1500)
 onPlacement = function(args)

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "generate": "node compile-flat.mjs",
+    "trace": "node extract-kerbs.mjs",
     "release": "node make-github-release.mjs",
     "test": "node --test test-flat.mjs",
     "test:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File test-builder.ps1 -HttpLoader loader.lua"

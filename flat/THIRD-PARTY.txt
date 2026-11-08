@@ -12,3 +12,11 @@ The flat driving surface does not use the mesh elevation or banking.
 The original mesh/textures are not included. A frozen horizontal-layout reference,
 source hashes and transformations are recorded in source/sepang-reference.json
 and generation-report.json.
+
+Model-derived kerb and runoff reference:
+source/sepang-kerbs.json records red/white kerb strip geometry/colour evidence
+from Sepang101Mtl and gravel/painted runoff bands from Sepang1641Mtl and
+Sepang1631Mtl in the same user-supplied GLB. Sepang1401Mtl provides the local
+driving-strip boundary for side detection and runoff widths. The original
+textures and mesh are not redistributed. This is an approximate adaptation
+to a wider flat layout, not surveyed real-world geometry; see surface-reference.md.
