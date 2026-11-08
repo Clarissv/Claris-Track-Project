@@ -6,13 +6,17 @@ For Jawa Timur's normal build tools. This opens the builder panel:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/loader.lua"))()
 ```
 
-Stand on your existing grass platform outside your vehicle, inspect the catalog, preview the placement, then click **Build / Resume**. The 2x layout has wider lanes, slopes and smoother rectangular joins: **14,815 parts**, about **3,229 x 2,668 studs**, **46-56-stud roads** and a **22.6-stud pit lane**. Keep the additional Config.Scale at 1. Character follow is enabled; it restores your position on pause/completion/error. Placement takes at least about 25 minutes.
+Stand on your existing grass platform outside your vehicle, inspect the catalog, preview the placement, then click **Build / Resume**. The 2x layout has wider lanes, slopes and smoother rectangular joins: **10,871 parts**, about **3,229 x 2,668 studs**, **46-56-stud roads** and a **22.6-stud pit lane**. Keep the additional Config.Scale at 1. Character follow is enabled; it restores your position on pause/completion/error. Placement takes at least about 18 minutes plus latency and streaming waits.
+
+The generator and runtime use an **11,000-part budget**. Edge lines follow their own paths and merge into longer pieces, with a tight height tolerance. All asphalt slabs, curbs, runoff, pit lane, pit wall and the start/finish marker are preserved from the 14,815-part version; the road size, width and slopes are unchanged.
 
 The loader fetches builder and data from one immutable release directory. Starting a build needs no local builder/plan files. The repository's raw files must be accessible without signing in.
 
-## Recover the existing suspended build
+## Save and resume this version
 
-Keep the old builder/server open and execute:
+Checkpoints must match the exact part plan. This smaller plan starts a fresh build and cannot resume a 14,815-part checkpoint. For that previous version, use `https://raw.githubusercontent.com/Clarissv/Sepang/main/releases/dd0c8269d107e615dbca/loader.lua` instead of the root loader URL below, with `"checkpoint"` or `"resume"` as needed. The old release remains available.
+
+Keep the current builder/server open and execute:
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/loader.lua"))("checkpoint")

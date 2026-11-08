@@ -58,7 +58,7 @@ export function makeSlab(a,b,width,bias,thickness,color,height=0,overlap=0.12) {
   const center=sub(top,mul(up,thickness/2));
   return [...center,width/horizontal,thickness,length+overlap+join,color,...right,...up].map(round);
 }
-export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infinity) {
+export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infinity,planeTolerance=tolerance) {
   const segments=[];let i=0;
   while(i<points.length-1) {
     let last=i+1;
@@ -86,7 +86,7 @@ export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infi
           surfaceError=Math.max(surfaceError,Math.abs(dot(sub(sample,top),basis.up)));
         }
       }
-      if(surfaceError>tolerance)break;
+      if(surfaceError>planeTolerance)break;
       last=j;
     }
     segments.push([i,last]);i=last;
@@ -101,9 +101,10 @@ function colorAt(grid,x,z) {
   return {color:classify(...grid.pixels.subarray(at*4,at*4+3)),role:grid.roles[at]};
 }
 export function compilePlan(csvText,meshSource,options={}) {
-  const settings={width:1800,samplesPerCsv:16,curbWidth:1.6,curbStripe:4,plateThickness:0.5,maxParts:15000,outputScale:2,roadWidthMultiplier:1.25,pitWidthMultiplier:1.4,surfaceTolerance:0.01,maxTurnDegrees:0.75,...options};
+  const settings={width:1800,samplesPerCsv:16,curbWidth:1.6,curbStripe:4,plateThickness:0.5,maxParts:11000,outputScale:2,roadWidthMultiplier:1.25,pitWidthMultiplier:1.4,surfaceTolerance:0.01,maxTurnDegrees:0.75,markingTolerance:0.04,markingSurfaceTolerance:0.006,markingMaxLength:48,markingMaxTurnDegrees:2,...options};
   if(!Number.isFinite(settings.outputScale)||settings.outputScale<=0)throw Error('Output scale must be positive and finite');
   if(!Number.isFinite(settings.surfaceTolerance)||settings.surfaceTolerance<=0||!Number.isFinite(settings.maxTurnDegrees)||settings.maxTurnDegrees<=0)throw Error('Invalid surface or turn tolerance');
+  if(['markingTolerance','markingSurfaceTolerance','markingMaxLength','markingMaxTurnDegrees'].some(key=>!Number.isFinite(settings[key])||settings[key]<=0))throw Error('Invalid edge marking settings');
   if(!Number.isFinite(settings.roadWidthMultiplier)||settings.roadWidthMultiplier<1||settings.roadWidthMultiplier>2||!Number.isFinite(settings.pitWidthMultiplier)||settings.pitWidthMultiplier<1||settings.pitWidthMultiplier>3)throw Error('Invalid road or pit width multiplier');
   if(!Number.isFinite(settings.width)||settings.width<=0||!Number.isInteger(settings.samplesPerCsv)||settings.samplesPerCsv<1||settings.samplesPerCsv>16||settings.curbWidth<=0||settings.curbStripe<=0||settings.plateThickness<=0||settings.maxParts<1||settings.maxParts>15000)throw Error('Invalid ribbon settings; budget must be at most 15000');
   const rows=parseTrackCsv(csvText),{glb,scene,road}=loadRoadGrid(meshSource,settings.width,2);
@@ -162,8 +163,25 @@ export function compilePlan(csvText,meshSource,options={}) {
     // makeSlab already closes outside corners; do not add a second turn overlap.
     const overlap=0.02;
     push('asphalt',makeSlab(a,b,wr+wl,(wr-wl)/2,settings.plateThickness,1,0,overlap));
-    push('edgeMarkings',makeSlab(a,b,0.18,wr-0.25,0.025,4,0.018,overlap));
-    push('edgeMarkings',makeSlab(a,b,0.18,-wl+0.25,0.025,4,0.018,overlap));
+  }
+  // Paint follows its own narrow offset path. Its horizontal approximation can
+  // be looser than the full road while a separate, tighter plane tolerance keeps
+  // it visible above the asphalt. Road/curb geometry is unchanged by this merge.
+  const edgeMarkingSegments=[];
+  for(const side of [-1,1]) {
+    const line=points.map(p=>{
+      const edge=side>0?p.wr:p.wl,bias=side*(edge-0.25)/Math.hypot(p.right[0],p.right[2]);
+      return {...p,pos:add(p.pos,mul(p.right,bias)),wr:0.09,wl:0.09};
+    });
+    for(const [i,j] of adaptiveSegments(line,settings.markingMaxLength,settings.markingTolerance,settings.markingMaxTurnDegrees*Math.PI/180,settings.markingSurfaceTolerance)) {
+      const slab=makeSlab(line[i],line[j],0.18,0,0.025,4,0.018,0.02),basis=boxBasis(slab);
+      // Offset paths can briefly reverse at the inside of a tight bend. Include
+      // their intermediate longitudinal extrema, not just the two endpoints.
+      for(let k=i;k<=j;k++)slab[5]=Math.max(slab[5],2*Math.abs(dot(sub(line[k].pos,slab.slice(0,3)),basis.back))+0.02);
+      slab[5]=round(slab[5]);
+      push('edgeMarkings',slab);
+      edgeMarkingSegments.push([side,i,j]);
+    }
   }
   // Corner curbs are separate strips. Their route follows the centerline and
   // widths, rather than painting large road cells. Zones are inferred from bends.
@@ -255,6 +273,7 @@ export function compilePlan(csvText,meshSource,options={}) {
   const meta={format:'sepang-ribbons-v1',scope:'main circuit, separate corner curbs, edge lines, source-derived runoff, approximate pit lane and pit wall; existing grass platform; no buildings or stands',sourceUrl:'https://github.com/TUMFTM/racetrack-database',centerlineFile:'source/Sepang.csv',centerlineSha256:csvHash,sourceSha256:glb.sha256,settings,alignment:fit,lapLengthMetres:rows.reduce((s,p,i)=>s+Math.hypot(p[0]-rows[(i+1)%rows.length][0],p[1]-rows[(i+1)%rows.length][1]),0),lapLengthStuds:distance,partCount:parts.length,palette,planBounds:bounds,width:round(bounds.max[0]-bounds.min[0]),depth:round(bounds.max[2]-bounds.min[2]),groupCounts:Object.fromEntries(Object.entries(groups).map(([k,v])=>[k,v.length])),groups,groundLift:round(-minimum),sourceHeightRange:[Math.min(...original.map(p=>p.pos[1])),Math.max(...original.map(p=>p.pos[1]))],retainedHeightRange:[Math.min(...points.map(p=>p.pos[1])),Math.max(...points.map(p=>p.pos[1]))],roadSampling:{outsideDistanceMedian:matches.sort((a,b)=>a-b)[Math.floor(matches.length/2)],outsideDistanceP95:matches[Math.floor(matches.length*0.95)]},pitLane:pitInfo,limitations:['CSV contains a smoothed 2D centerline and estimated widths, not a survey of the 2025 layout.','GLB supplies elevation after a similarity alignment; local surface samples and banking are smoothed.','Corner curb zones are inferred from curvature; exact paint and curb extents are approximations.','Pit lane is a parallel approximation; buildings, stands and a new grass floor are omitted.','Rectangular segments still have small overlapping joins; no wedges or mesh uploads are used.','Placement and driving require live verification with the current catalog.']};
   meta.retainedHeightRange = meta.retainedHeightRange.map(h=>h-minimum);
   meta.roadSegments=segments;
+  meta.edgeMarkingSegments=edgeMarkingSegments;
   return scalePlan({meta,parts,centerline:points.map(p=>[p.pos[0],p.pos[1]-minimum,p.pos[2],p.wr,p.wl,p.s,...p.normal])},settings.outputScale);
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {

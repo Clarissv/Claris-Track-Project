@@ -4,6 +4,15 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {packageRuntime} from './package-ribbons.mjs';
 export function makeRelease(directory) {
+  // Keep the previously published loader available for its own checkpoints.
+  const previousManifest=path.join(directory,'release-manifest.json'),previousLoader=path.join(directory,'loader.lua');
+  if(fs.existsSync(previousManifest)&&fs.existsSync(previousLoader)) {
+    const previous=JSON.parse(fs.readFileSync(previousManifest,'utf8')),loader=fs.readFileSync(previousLoader);
+    if(/^[a-f0-9]{20}$/.test(previous.version)&&loader.toString().includes(`/releases/${previous.version}/`)) {
+      const pinned=path.join(directory,'releases',previous.version,'loader.lua');
+      if(!fs.existsSync(pinned))fs.writeFileSync(pinned,loader);
+    }
+  }
   const plan=JSON.parse(fs.readFileSync(path.join(directory,'sepang-plan.json'),'utf8'));
   const {format,partCount,palette,planBounds,sourceSha256,centerlineSha256}=plan.meta;
   const assets={
@@ -24,7 +33,10 @@ export function makeRelease(directory) {
   const base=`https://raw.githubusercontent.com/Clarissv/Sepang/main/releases/${version}/`;
   const template=fs.readFileSync(path.join(directory,'github-loader-template.luau'),'utf8');
   if(template.split('__RELEASE_BASE__').length!==2)throw Error('Missing release marker');
-  fs.writeFileSync(path.join(directory,'loader.lua'),template.replace('__RELEASE_BASE__',base));
+  const loader=Buffer.from(template.replace('__RELEASE_BASE__',base));
+  fs.writeFileSync(path.join(directory,'loader.lua'),loader);
+  fs.writeFileSync(path.join(release,'loader.lua'),loader);
+  files.push({path:`releases/${version}/loader.lua`,bytes:loader.length,sha256:crypto.createHash('sha256').update(loader).digest('hex')});
   const manifest={format:'sepang-github-release-v1',version,partCount,footprint:[plan.meta.width,plan.meta.depth],files};
   fs.writeFileSync(path.join(directory,'release-manifest.json'),JSON.stringify(manifest,null,2)+'\n');
   return manifest;

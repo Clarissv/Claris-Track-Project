@@ -11,7 +11,8 @@ test('GitHub release preserves every part and keeps all remote assets in the pin
   const runtime=JSON.parse(fs.readFileSync(path.join(here,'releases',manifest.version,'runtime-plan.json'),'utf8'));
   assert.deepEqual(runtime.parts,complete.parts);
   for(const key of ['format','partCount','palette','planBounds'])assert.deepEqual(runtime.meta[key],complete.meta[key]);
-  assert.equal(manifest.partCount,14815);
+  assert.equal(manifest.partCount,complete.parts.length);
+  assert.ok(manifest.partCount>=8000&&manifest.partCount<=11000);
   for(const entry of manifest.files) {
     assert.ok(entry.path.startsWith('releases/'+manifest.version+'/'));
     const body=fs.readFileSync(path.join(here,entry.path));
@@ -19,6 +20,7 @@ test('GitHub release preserves every part and keeps all remote assets in the pin
     assert.equal(crypto.createHash('sha256').update(body).digest('hex'),entry.sha256);
   }
   const loader=fs.readFileSync(path.join(here,'loader.lua'),'utf8');
+  assert.equal(fs.readFileSync(path.join(here,'releases',manifest.version,'loader.lua'),'utf8'),loader);
   assert.ok(loader.includes('https://raw.githubusercontent.com/Clarissv/Sepang/main/releases/'+manifest.version+'/'));
   assert.ok(!loader.includes('__RELEASE_BASE__'));
   assert.ok(Buffer.byteLength(JSON.stringify(runtime))<Buffer.byteLength(JSON.stringify(complete)));

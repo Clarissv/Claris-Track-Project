@@ -47,7 +47,8 @@ test('adaptive ribbons use fewer straight segments while retaining a bend',()=> 
   assert.deepEqual(catmull([0,0],[1,0],[2,0],[3,0],0),[1,0]);
 });
 test('current output preserves source identity, count limits, closure and usable dimensions',()=> {
-  assert.equal(plan.meta.format,'sepang-ribbons-v1');assert.equal(plan.parts.length,plan.meta.partCount);assert.ok(plan.parts.length<15000);
+  assert.equal(plan.meta.format,'sepang-ribbons-v1');assert.equal(plan.parts.length,plan.meta.partCount);assert.ok(plan.parts.length>=8000&&plan.parts.length<=11000);
+  assert.equal(plan.meta.settings.maxParts,11000);
   const csv=fs.readFileSync(path.join(here,'source/Sepang.csv'));
   assert.equal(crypto.createHash('sha256').update(csv).digest('hex'),plan.meta.centerlineSha256);
   assert.ok(Math.abs(plan.meta.lapLengthMetres-5543)<10);
@@ -63,6 +64,35 @@ test('current output preserves source identity, count limits, closure and usable
   }
   assert.ok(Math.abs(low)<.002,'Lowest underside does not meet the ground reference');
   const heights=plan.centerline.map(p=>p[1]);assert.ok(Math.max(...heights)-Math.min(...heights)>20,'Grades were flattened');
+});
+test('merged edge markings stay continuous, visible and close to the unchanged asphalt',()=> {
+  const marks=plan.meta.groups.edgeMarkings.map(i=>plan.parts[i]),roadByPoint=[];
+  assert.ok(marks.length<plan.meta.groupCounts.asphalt,'Paint should no longer require two parts per road segment');
+  assert.equal(plan.meta.edgeMarkingSegments.length,marks.length);
+  plan.meta.roadSegments.forEach(([a,b],i)=>{for(let k=a;k<=b;k++)roadByPoint[k]=plan.parts[plan.meta.groups.asphalt[i]];});
+  const surfaceHeight=(box,q)=>{
+    const u=boxBasis(box).up,top=box.slice(0,3).map((v,k)=>v+u[k]*box[4]/2);
+    return top[1]-(u[0]*(q[0]-top[0])+u[2]*(q[2]-top[2]))/u[1];
+  };
+  const count=plan.centerline.length-1,scale=plan.meta.outputScale,lastBySide={[-1]:0,1:0};
+  let minimum=Infinity,maximum=-Infinity;
+  for(let m=0;m<marks.length;m++) {
+    const [side,a,b]=plan.meta.edgeMarkingSegments[m],box=marks[m],basis=boxBasis(box);
+    assert.equal(a,lastBySide[side],'Edge line has a skipped interval');lastBySide[side]=b;
+    for(let i=a;i<=b;i++) {
+      const p=plan.centerline[i],prev=plan.centerline[(i-1+count)%count],next=plan.centerline[(i+1)%count],along=unit(sub(next.slice(0,3),prev.slice(0,3))),flat=unit([along[2],0,-along[0]]),normal=p.slice(6,9);
+      const bank=-(normal[0]*flat[0]+normal[2]*flat[2])/normal[1],right=unit([flat[0],bank,flat[2]]);
+      const offset=side*((side>0?p[3]:p[4])-.25*scale)/Math.hypot(right[0],right[2]);
+      const q=p.slice(0,3).map((v,k)=>v+right[k]*offset),d=sub(q,box.slice(0,3));
+      assert.ok(Math.abs(dot(d,basis.right))<box[3]/2,'Edge line wandered away from its route');
+      assert.ok(Math.abs(dot(d,basis.back))<=box[5]/2+.001,`Edge line ${m}, sample ${i}: length excess ${Math.abs(dot(d,basis.back))-box[5]/2}`);
+      const height=surfaceHeight(box,q)-surfaceHeight(roadByPoint[i],q);
+      minimum=Math.min(minimum,height);maximum=Math.max(maximum,height);
+    }
+  }
+  assert.equal(lastBySide[-1],count);assert.equal(lastBySide[1],count);
+  assert.ok(minimum>.002,`Edge paint disappears into asphalt: ${minimum}`);
+  assert.ok(maximum<.075,`Edge paint rises too far above asphalt: ${maximum}`);
 });
 test('road slabs cover dense samples throughout the lane, including tight bends',()=> {
   const asphalt=plan.meta.groups.asphalt.map(i=>plan.parts[i]);

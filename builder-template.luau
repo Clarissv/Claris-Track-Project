@@ -23,7 +23,7 @@ local CONFIG = {
     FollowDistance = 48,
     FollowHeight = 12,
     FollowSettleTime = 0.10,
-    MaxObjects = 15000,
+    MaxObjects = 11000,
     ServerObjectLimit = 20000,
     ApplyAppearance = true, -- Color/material controls require the game's Build Tools Plus access.
 }
@@ -583,6 +583,6 @@ end
 if restoredCheckpoint then
     status(string.format("Checkpoint loaded: %d confirmed; next part %d. Load the saved build, inspect, then Resume.", api.NextIndex - 1, api.NextIndex))
 else
-    status(string.format("Sepang ribbons: %d / 15000 objects. Inspect, preview, then Build. Lowest underside follows the ground beneath you.", #PLAN))
+    status(string.format("Sepang ribbons: %d / %d objects. Inspect, preview, then Build. Lowest underside follows the ground beneath you.", #PLAN, CONFIG.MaxObjects))
 end
 return api

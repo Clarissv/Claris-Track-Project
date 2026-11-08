@@ -15,7 +15,7 @@ assert(decoded and type(document) == "table", "Sepang: invalid plan JSON: " .. t
 local meta = document.meta
 local PLAN = document.parts
 assert(type(meta) == "table" and meta.format == "sepang-ribbons-v1", "Sepang: incompatible plan. Copy the matching ribbon builder and plan together.")
-assert(type(PLAN) == "table" and #PLAN > 0 and #PLAN <= CONFIG.MaxObjects and meta.partCount == #PLAN, "Sepang: invalid plan count or exceeded 15000-object budget")
+assert(type(PLAN) == "table" and #PLAN > 0 and #PLAN <= CONFIG.MaxObjects and meta.partCount == #PLAN, "Sepang: invalid plan count or exceeded " .. CONFIG.MaxObjects .. "-object budget")
 local function finite(n) return type(n) == "number" and n == n and math.abs(n) < math.huge end
 local PALETTE = {}
 assert(type(meta.palette) == "table" and #meta.palette > 0, "Sepang: missing palette")
