@@ -192,6 +192,7 @@ local function fresh()
     clock = 0
     catalogNames = { "Block" }
     fixtureDocument.meta.catalogRoles = nil
+    fixtureDocument.meta.nonCollidingPartIndices = nil
     return loadBuilder()
 end
 local elevatedSentinel = { State = "paused", preserved = true }
@@ -583,6 +584,37 @@ local unwantedTexture = child(roadTemplate,"Texture","UnexpectedTexture")
 ok = pcall(api.Build)
 assert(not ok and #calls == 0, "A textured tile must require fresh inspection rather than using the old plain-block assumption")
 unwantedTexture:Destroy()
+api = withRoadRole()
+fixtureDocument.meta.nonCollidingPartIndices = {1}
+api = loadBuilder()
+local drivingTarget, paintTarget = api.GetTarget(1), api.GetTarget(2)
+assert(drivingTarget.canCollide == true and paintTarget.canCollide == false, "Road must collide and visual paint must not collide")
+api.Build()
+assert(api.State == "complete" and #calls == 2 and calls[1][8] == true and calls[2][8] == false, "The placement payload must preserve false collision flags and confirm them")
+checkpoint = checkpointBuilder()
+assert(checkpoint.nonCollidingPartIndices[1] == 1, "Checkpoint must preserve noncolliding surface assignments")
+checkpointDocument.nonCollidingPartIndices = {}
+ok = pcall(loadBuilder,"MonzaTrack/monza-plan.json",nil,"resume")
+assert(not ok and _G.MonzaBuilder == api, "A checkpoint with different surface collisions must not replace the session")
+checkpointDocument.nonCollidingPartIndices = {1}
+api = loadBuilder("MonzaTrack/monza-plan.json",nil,"resume")
+assert(api.NextIndex == 3, "Matching surface collisions must resume a completed checkpoint")
+api = withRoadRole()
+fixtureDocument.meta.nonCollidingPartIndices = {1}
+api = loadBuilder()
+placementOverride = function(o) o.CanCollide = true end
+ok = pcall(api.Build)
+assert(not ok and #calls == 2 and api.NextIndex == 2, "Server paint with collision enabled must fail confirmation")
+api = withRoadRole()
+placementOverride = function(o) o.CanCollide = false end
+ok = pcall(api.Build)
+assert(not ok and #calls == 1 and api.NextIndex == 1, "A noncolliding road must fail confirmation")
+api = fresh()
+for _, bad in ipairs({{2},{-1},{.5},{1,1}}) do
+    fixtureDocument.meta.nonCollidingPartIndices = bad
+    ok = pcall(loadBuilder)
+    assert(not ok and _G.MonzaBuilder == api and #calls == 0, "Invalid collision assignments must fail before replacing the session")
+end
 api = fresh()
 api.Unload()
 -- HTTP_LOADER_TESTS

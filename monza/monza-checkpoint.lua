@@ -33,7 +33,8 @@ for _, part in ipairs(plan.parts) do for _, n in ipairs(part) do checksum = (che
 local saved = { format = "monza-checkpoint-v2", placeId = game.PlaceId, saveObjectLimit = api.Config.SaveObjectLimit, count = api.Count, nextIndex = api.NextIndex,
     checksum = string.format("%.0f", checksum), origin = transform, scale = scale,
     catalogName = request.baseCatalogName or request.name,
-    applyAppearance = request.applyAppearance == true, catalogRoles = {} }
+    applyAppearance = request.applyAppearance == true, catalogRoles = {}, nonCollidingPartIndices = {} }
+for _, index in ipairs(plan.meta.nonCollidingPartIndices or {}) do saved.nonCollidingPartIndices[#saved.nonCollidingPartIndices + 1] = index end
 for _, role in ipairs(plan.meta.catalogRoles or {}) do
     local indices = {}
     for _, index in ipairs(role.partIndices) do indices[#indices + 1] = index end

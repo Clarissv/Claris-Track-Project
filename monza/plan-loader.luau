@@ -44,6 +44,12 @@ for i, part in ipairs(PLAN) do
     local right, up = Vector3.new(part[8],part[9],part[10]), Vector3.new(part[11],part[12],part[13])
     assert(math.abs(right.Magnitude-1) < 0.002 and math.abs(up.Magnitude-1) < 0.002 and math.abs(right:Dot(up)) < 0.002 and up.Y > 0, "Monza: invalid orientation in part " .. i)
 end
+local NON_COLLIDING_INDICES, NON_COLLIDING = meta.nonCollidingPartIndices or {}, {}
+assert(type(NON_COLLIDING_INDICES) == "table", "Monza: invalid collision assignments")
+for _, index in ipairs(NON_COLLIDING_INDICES) do
+    assert(finite(index) and index % 1 == 0 and index >= 0 and index < #PLAN and not NON_COLLIDING[index + 1], "Monza: invalid or duplicate collision index")
+    NON_COLLIDING[index + 1] = true
+end
 local CATALOG_ROLES, PART_ROLE = meta.catalogRoles or {}, {}
 assert(type(CATALOG_ROLES) == "table", "Monza: invalid catalog roles")
 for roleIndex, role in ipairs(CATALOG_ROLES) do
@@ -69,6 +75,9 @@ if launchMode == "resume" then
     local checksum = 0
     for _, p in ipairs(PLAN) do for _, n in ipairs(p) do checksum = (checksum * 65599 + math.floor(n * 10000 + 0.5)) % 2147483647 end end
     assert(saved.count == #PLAN and saved.checksum == string.format("%.0f", checksum), "Monza: checkpoint belongs to different track geometry")
+    local savedCollision = saved.nonCollidingPartIndices or {}
+    assert(type(savedCollision) == "table" and #savedCollision == #NON_COLLIDING_INDICES, "Monza: checkpoint uses different surface collisions")
+    for i, index in ipairs(NON_COLLIDING_INDICES) do assert(savedCollision[i] == index, "Monza: checkpoint uses different surface collisions") end
     assert(finite(saved.nextIndex) and saved.nextIndex % 1 == 0 and saved.nextIndex >= 1 and saved.nextIndex <= #PLAN + 1, "Monza: invalid checkpoint index")
     assert(type(saved.origin) == "table" and #saved.origin == 12 and finite(saved.scale) and saved.scale > 0, "Monza: invalid checkpoint transform")
     for _, n in ipairs(saved.origin) do assert(finite(n), "Monza: invalid checkpoint transform") end

@@ -4,12 +4,28 @@ Separate Monza build for **Jakarta (place 14005966837)**. Includes the F1 circui
 low ramped kerbs, astroturf and gravel. Buildings and stands are left for manual
 construction. Existing Sepang variants are preserved.
 
-**10,278 parts**, about **3,516 × 6,694 studs**, with **40–42-stud roads** and a
-**32-stud pit lane**. Track elevation varies by about 68.7 studs.
+**10,047 parts**, about **3,514 × 6,694 studs**, with **40–42-stud roads** and a
+**32-stud pit lane**. Track elevation varies by about 67.8 studs.
 
-The Jakarta migration preserves every track part and its elevation. It updates
-the runtime's target map, server-count checks and checkpoints. The exported
-Jakarta client uses the same catalog and placement payload as Jawa Timur.
+The driving profile now smooths height over an 80-stud Gaussian distance and
+banking over 100 studs. Horizontal layout and vehicle widths are unchanged.
+Broad hills remain: the main circuit's elevation adjustment is at most 1.06 studs before the
+common grass offset. Paint and the start line have collision disabled; asphalt,
+pit pavement and low kerbs remain solid.
+
+The largest source height curvature is reduced by about 97.8%. Main-road
+pitch changes stay below 0.08 degrees and top-plane differences across actual
+overlapping plate corners stay below 0.009 studs. These are offline geometry
+measurements; the same car and speed still need a live driving check.
+
+Pit entry/exit pavement follows the main road's height and banking throughout
+their shared footprint, then blends back outside the overlap. A previous
+0.75-stud pit-entry obstruction is removed. The highest colliding surface across
+five sampled tyre paths stays within 0.016 studs of the intended smooth profile,
+including the pit merge and accessories. Paint and the finish line do not
+contribute any collision surface.
+
+The exported Jakarta client uses the same catalog and placement payload as Jawa Timur.
 You confirmed that Jakarta saves builds above 10,000 objects. Its server-side
 save handler was not exported, so the exact maximum is still unknown.
 The 11,000-object guard is a local builder setting. If the exact save limit is known, set
@@ -34,7 +50,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/
 Join Jakarta and enable the game's build tools. Stand on the grass where you want the pit
 straight to be, inspect the catalog, preview, then Build. This script opens the
 panel without placing parts. The standing point fixes horizontal pit position;
-the elevated pit road is about 16 studs above that grass at the default anchor.
+the elevated pit road is about 15.3 studs above that grass at the default anchor.
 The lowest represented surface clears your grass by 0.25 studs. Set
 `_G.MonzaBuilder.Config.YawDegrees` before the first preview/build to rotate it.
 
@@ -66,6 +82,12 @@ are specific to the geometry, map and release. Monza uses `_G.MonzaBuilder` and
 `monza-jakarta-checkpoint.json`, separately from both Sepang variants and the old
 Jawa Timur Monza checkpoint. Start a fresh build in Jakarta; a Jawa Timur
 checkpoint cannot restore the objects stored in Jakarta's separate save slots.
+For the smoothed release, start in an empty Jakarta build slot. Keep the old
+save in another slot: its geometry/checkpoint belongs to the prior release and
+overlaying both versions creates conflicting collision surfaces. The previous
+Jakarta loader is preserved at
+`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/4447cb8412ac63b3a4d0/loader.lua`.
+
 The original Jawa Timur release remains available at
 `https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/7a70765183a5d1624b7e/loader.lua`.
 
@@ -80,7 +102,11 @@ The database CSV supplies the horizontal route and road widths. Named GLB
 surfaces supply elevation, banking, pit route, kerb colours, gravel and astroturf.
 The model's outer two-degree display tilt is removed, with its native terrain
 retained. Small centreline adjustments align the CSV with the model surface.
-Banking is smoothed and capped at six degrees. Kerbs use a custom 0–0.12 stud
+Banking is smoothed and capped at six degrees. Height and banking filters use
+physical distance with five-sigma support, preventing uneven sample density
+from creating new ripples. Plates share endpoint heights, use accurate rotation
+axes, and subdivide when pitch variation or top-plane error is too large.
+Kerbs use a custom 0–0.12 stud
 ramp over 3.2 studs, with 12-stud end tapers. Tall sausage kerbs are omitted.
 Runoff fills narrow grass slivers and merges compatible patches.
 The core pit route follows the model; short sideways end connectors are replaced

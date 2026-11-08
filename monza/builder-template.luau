@@ -195,7 +195,7 @@ local function makeRequest(index, cf, scale, apply)
         appearance=apply, verifyAppearance=apply or roleIndex ~= nil,
         color=color, material=material, materialVariant=variant,
         baseCatalogName=selected.entry.name, applyAppearance=apply,
-        origin=cf, scale=scale}
+        origin=cf, scale=scale, canCollide=not NON_COLLIDING[index]}
 end
 local function validate(scale)
     assert(type(scale) == "number" and scale > 0 and scale < math.huge, "Scale must be positive and finite")
@@ -345,7 +345,7 @@ local function matches(object, request)
         if object.Material ~= request.material then return false, "material=" .. tostring(object.Material) .. " (expected " .. tostring(request.material) .. ")" end
         if (object.MaterialVariant or "") ~= request.materialVariant then return false, "material variant differs" end
     end
-    if not object.CanCollide then return false, "CanCollide=false" end
+    if object.CanCollide ~= request.canCollide then return false, "CanCollide differs (expected " .. tostring(request.canCollide) .. ")" end
     if not object.Anchored then return false, "Anchored=false" end
     return true
 end
@@ -516,7 +516,7 @@ function api.Build()
                 connection = folder.ChildAdded:Connect(function(object) table.insert(candidates, object) end)
                 api.Phase = "confirming"
                 status(string.format("Confirmed %d / %d; confirming part %d", index - 1, #PLAN, index), true)
-                endpoint:FireServer(request.name, request.cf, request.size, 0, request.appearance and request.color or nil, request.appearance and request.material or nil, request.appearance and request.materialVariant or nil, true)
+                endpoint:FireServer(request.name, request.cf, request.size, 0, request.appearance and request.color or nil, request.appearance and request.material or nil, request.appearance and request.materialVariant or nil, request.canCollide)
                 local object, refreshed
                 local deadline = started + CONFIG.PlacementTimeout
                 repeat

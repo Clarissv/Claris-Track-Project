@@ -14,10 +14,10 @@ export function makeRelease(directory) {
     }
   }
   const plan=JSON.parse(fs.readFileSync(path.join(directory,'monza-plan.json'),'utf8'));
-  const {format,partCount,palette,planBounds,sourceSha256,centerlineSha256,placementAnchor,catalogRoles,gameTarget}=plan.meta;
+  const {format,partCount,palette,planBounds,sourceSha256,centerlineSha256,placementAnchor,catalogRoles,gameTarget,nonCollidingPartIndices}=plan.meta;
   const assets={
     'monza-builder.lua':fs.readFileSync(path.join(directory,'monza-builder.lua')),
-    'runtime-plan.json':Buffer.from(JSON.stringify({meta:{format,partCount,palette,planBounds,sourceSha256,centerlineSha256,placementAnchor,catalogRoles,gameTarget},parts:plan.parts})),
+    'runtime-plan.json':Buffer.from(JSON.stringify({meta:{format,partCount,palette,planBounds,sourceSha256,centerlineSha256,placementAnchor,catalogRoles,gameTarget,nonCollidingPartIndices},parts:plan.parts})),
     'monza-checkpoint.lua':fs.readFileSync(path.join(directory,'monza-checkpoint.lua')),
     'monza-diagnose.lua':fs.readFileSync(path.join(directory,'monza-diagnose.lua')),
   };

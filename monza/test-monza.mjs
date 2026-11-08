@@ -7,8 +7,11 @@ import assert from 'node:assert/strict';
 import {offsetPoint,topAt,compileMonza} from './compile-monza.mjs';
 import {boxBasis,boxCorners} from './geometry.mjs';
 import {dot,sub} from './track-geometry.mjs';
+import {smoothDrivingPoints,profileMetrics} from './smooth-surface.mjs';
+import {auditJoins,overlapVertices,topHeight,collisionSampler} from './surface-audit.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),read=name=>JSON.parse(fs.readFileSync(path.join(here,name))),plan=read('monza-plan.json'),reference=read('source/monza-reference.json'),trace=read('source/monza-surfaces.json');
-const point=i=>({...reference.points[i],wr:plan.centerline[i][3],wl:plan.centerline[i][4],pos:[reference.points[i].pos[0],reference.points[i].pos[1]+plan.meta.groundLift,reference.points[i].pos[2]]});
+const smoothed=smoothDrivingPoints(reference.points,{heightSigma:plan.meta.settings.heightSmoothingStuds,bankSigma:plan.meta.settings.bankSmoothingStuds});
+const point=i=>({...smoothed[i],wr:plan.centerline[i][3],wl:plan.centerline[i][4],pos:[smoothed[i].pos[0],smoothed[i].pos[1]+plan.meta.groundLift,smoothed[i].pos[2]]});
 function inside(part,q,tolerance=.001){const basis=boxBasis(part),delta=sub(q,part.slice(0,3));return Math.abs(dot(delta,basis.right))<=part[3]/2+tolerance&&Math.abs(dot(delta,basis.back))<=part[5]/2+tolerance;}
 const roadAt=Array(reference.points.length);for(const span of plan.meta.roadSegments)for(let i=span.start;i<=span.end;i++)roadAt[i]=span.index;
 test('part budget, dimensions, orientation and separate Monza runtime',()=>{
@@ -25,7 +28,7 @@ test('every main-road sample is covered across the entire driving width',()=>{
 test('road joins, including the closing lap, have very small height steps',()=>{
   let maxStep=0;const spans=plan.meta.roadSegments;
   for(let i=0;i<spans.length;i++){const span=spans[i],next=spans[(i+1)%spans.length];if(i+1<spans.length)assert.equal(span.end,next.start);const p=point(span.end);for(const d of [-p.wl,0,p.wr]){const q=offsetPoint(p,d);maxStep=Math.max(maxStep,Math.abs(topAt(plan.parts[span.index],q[0],q[2])-topAt(plan.parts[next.index],q[0],q[2])));}}
-  assert(maxStep<.03,`Road join step ${maxStep}`);assert.deepEqual(plan.centerline[0].slice(0,5),plan.centerline.at(-1).slice(0,5));
+  assert(maxStep<.009,`Road join step ${maxStep}`);assert.deepEqual(plan.centerline[0].slice(0,5),plan.centerline.at(-1).slice(0,5));
 });
 test('model elevation and accepted Sepang vehicle scale are retained',()=>{
   assert.equal(plan.meta.studsPerMetre,2.6884487795629512);assert.equal(plan.meta.settings.roadWidthMultiplier,1.25);assert.equal(plan.meta.settings.pitWidthMultiplier,1.4);
@@ -68,5 +71,54 @@ test('immutable GitHub release has matching files and runtime geometry',()=>{
   for(const f of manifest.files){const bytes=fs.readFileSync(path.join(here,f.path));assert.equal(bytes.length,f.bytes);assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),f.sha256);}
   const runtime=read(`releases/${manifest.version}/runtime-plan.json`);assert.deepEqual(runtime.parts,plan.parts);assert.deepEqual(runtime.meta.catalogRoles,plan.meta.catalogRoles);
   assert.deepEqual(runtime.meta.gameTarget,plan.meta.gameTarget);
+  assert.deepEqual(runtime.meta.nonCollidingPartIndices,plan.meta.nonCollidingPartIndices);
   const loader=fs.readFileSync(path.join(here,'loader.lua'),'utf8');assert(loader.includes(`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/${manifest.version}/`));assert(!loader.includes('/main/flat/'));assert(loader.includes('monza-jakarta-checkpoint.json'));
+});
+
+test('crest smoothing reduces vertical curvature while preserving hills and the horizontal route',()=>{
+  const before=profileMetrics(reference.points),after=profileMetrics(smoothed);
+  assert(after.maxCurvature<before.maxCurvature*.03,`Curvature ${after.maxCurvature}`);
+  assert(after.maxCurvature<.00025);assert(after.maxGrade<.045);
+  assert(after.maxBankGradient<before.maxBankGradient*.4);
+  assert(plan.meta.surfaceSmoothing.maxHeightAdjustmentStuds<1.2);
+  for(let i=0;i<smoothed.length;i++){assert.equal(plan.centerline[i][0],reference.points[i].pos[0]);assert.equal(plan.centerline[i][2],reference.points[i].pos[2]);}
+});
+
+test('actual overlapping road and pit corners do not hide raised seams or sharp pitch changes',()=>{
+  for(const [spans,closed] of [[plan.meta.roadSegments,true],[plan.meta.pitSegments,false]]) {
+    const audit=auditJoins(plan,spans,closed);
+    assert(audit.maxOverlapStep<.0085,`Overlap lip ${audit.maxOverlapStep}`);
+    assert(audit.maxPitchChangeDegrees<.08,`Pitch crease ${audit.maxPitchChangeDegrees}`);
+  }
+  // A deliberate raised plate must be caught by the overlap test.
+  const a=plan.parts[plan.meta.roadSegments[0].index],b=[...plan.parts[plan.meta.roadSegments[1].index]];b[1]+=.1;
+  assert(overlapVertices(a,b).some(([x,z])=>Math.abs(topHeight(a,x,z)-topHeight(b,x,z))>.09));
+});
+
+test('all paint and the start line are noncolliding; driving surfaces retain collision',()=>{
+  const expected=[...plan.meta.groups.edgeMarkings,...plan.meta.groups.pitMarkings,...plan.meta.groups.startFinish];
+  assert.deepEqual(plan.meta.nonCollidingPartIndices,expected);
+  const visual=new Set(expected);assert.equal(visual.size,expected.length);
+  for(const name of ['asphalt','pitLane','curbs','runoff','sand'])assert(plan.meta.groups[name].every(i=>!visual.has(i)));
+});
+
+test('tyre paths include every collision layer and stay close to the smooth profile',()=>{
+  const visual=new Set(plan.meta.nonCollidingPartIndices),height=collisionSampler(plan.parts.filter((_,i)=>!visual.has(i)));let maximum=0;
+  for(const line of [smoothed,plan.meta.pitPoints])for(const p of line)for(const d of [-12,-6,0,6,12]) {
+    const q=offsetPoint(p,d),expected=q[1]+(line===smoothed?plan.meta.groundLift:0),actual=height(q[0],q[2]);
+    assert(Number.isFinite(actual),'Gap under a tyre path');maximum=Math.max(maximum,Math.abs(actual-expected));
+  }
+  // This is profile approximation error, including the curved pit merge;
+  // the separate overlap test constrains instantaneous plate-edge lips.
+  assert(maximum<.02,`Hidden collision protrusion ${maximum}`);
+});
+
+test('distance smoothing is independent of sample density and preserves open endpoint heights',()=>{
+  const make=(count,warp)=>{const points=[];for(let i=0;i<count;i++){const t=2*Math.PI*warp(i/count);points.push({pos:[300*Math.cos(t),5*Math.cos(3*t),300*Math.sin(t)],bank:.02*Math.sin(t),wr:20,wl:20});}points.push(structuredClone(points[0]));return points;};
+  const regular=smoothDrivingPoints(make(1200,t=>t)),uneven=smoothDrivingPoints(make(2400,t=>t+.08*Math.sin(2*Math.PI*t)));
+  const angles=uneven.map((p,i)=>i===uneven.length-1?2*Math.PI:(Math.atan2(p.pos[2],p.pos[0])+2*Math.PI)%(2*Math.PI));let j=0;
+  for(let i=0;i<regular.length-1;i++){const angle=i/(regular.length-1)*2*Math.PI;while(j+1<angles.length-1&&angles[j+1]<angle)j++;const t=(angle-angles[j])/(angles[j+1]-angles[j]),height=uneven[j].pos[1]*(1-t)+uneven[j+1].pos[1]*t;assert(Math.abs(regular[i].pos[1]-height)<.001);}
+  const open=Array.from({length:501},(_,i)=>({pos:[i,3+.02*i+Math.sin(i/30),0],bank:0,wr:16,wl:16})),result=smoothDrivingPoints(open,{closed:false});
+  assert.equal(result[0].pos[1],open[0].pos[1]);assert.equal(result.at(-1).pos[1],open.at(-1).pos[1]);
+  assert(result.every(p=>p.pos.every(Number.isFinite)));
 });

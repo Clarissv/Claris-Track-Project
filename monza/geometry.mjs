@@ -48,9 +48,11 @@ export function makeSlab(a,b,width,bias,thickness,color,height=0,overlap=0.12) {
   const join=width/horizontal*Math.tan(Math.min(turn,0.35)/2);
   const top=add(mul(add(ap,bp),0.5),mul(up,height));
   const center=sub(top,mul(up,thickness/2));
-  return [...center,width/horizontal,thickness,length+overlap+join,color,...right,...up].map(round);
+  // Coarse axis rounding creates a height lip across a forty-stud-wide plate.
+  // Keep compact positions/dimensions, but preserve the top plane accurately.
+  return [...center,width/horizontal,thickness,length+overlap+join,color,...right,...up].map((n,i)=>i>=7?Math.round(n*1e8)/1e8:round(n));
 }
-export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infinity,planeTolerance=tolerance) {
+export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infinity,planeTolerance=tolerance,maxPitchChange=Infinity) {
   const segments=[];let i=0;
   while(i<points.length-1) {
     let last=i+1;
@@ -58,6 +60,13 @@ export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infi
       const a=points[i],b=points[j],axis=sub(b.pos,a.pos),length=Math.hypot(...axis);
       if(length>maxLength)break;
       const direction=unit(axis);let error=0,widthVariation=0,bankVariation=0;
+      const horizontal=Math.hypot(axis[0],axis[2]);
+      let minPitch=Infinity,maxPitch=-Infinity;
+      if(Number.isFinite(maxPitchChange))for(let k=i;k<=j;k++) {
+        const normal=points[k].normal,pitch=Math.atan(-(normal[0]*axis[0]+normal[2]*axis[2])/(normal[1]*horizontal));
+        minPitch=Math.min(minPitch,pitch);maxPitch=Math.max(maxPitch,pitch);
+      }
+      if(maxPitch-minPitch>maxPitchChange)break;
       if(a.right&&b.right) {
         const cosine=(a.right[0]*b.right[0]+a.right[2]*b.right[2])/(Math.hypot(a.right[0],a.right[2])*Math.hypot(b.right[0],b.right[2]));
         if(Math.acos(Math.max(-1,Math.min(1,cosine)))>maxTurn)break;
