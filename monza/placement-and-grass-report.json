@@ -1,0 +1,130 @@
+{
+  "format": "monza-placement-and-grass-audit-v1",
+  "groups": {
+    "asphalt": 4814,
+    "edgeMarkings": 1721,
+    "curbs": 1566,
+    "runoff": 399,
+    "sand": 1006,
+    "pitLane": 346,
+    "pitMarkings": 194,
+    "startFinish": 1
+  },
+  "reuse": {
+    "planParts": 10047,
+    "oldMatcherUniquePlacements": 10037,
+    "skippedByOldMatcher": 10,
+    "withOneExistingGrass": 10038,
+    "reused": [
+      {
+        "index": 4869,
+        "reusedIndex": 4868,
+        "group": "edgeMarkings",
+        "positionDifference": 0.13449973977662222,
+        "sizeDifference": 0.005400000000000016
+      },
+      {
+        "index": 7426,
+        "reusedIndex": 7425,
+        "group": "curbs",
+        "positionDifference": 0.10490367009776617,
+        "sizeDifference": 0.008000000000000007
+      },
+      {
+        "index": 7427,
+        "reusedIndex": 7425,
+        "group": "curbs",
+        "positionDifference": 0.19800505044048683,
+        "sizeDifference": 0.014300349646075097
+      },
+      {
+        "index": 7429,
+        "reusedIndex": 7428,
+        "group": "curbs",
+        "positionDifference": 0.07284256997127507,
+        "sizeDifference": 0.00260192236625152
+      },
+      {
+        "index": 7431,
+        "reusedIndex": 7430,
+        "group": "curbs",
+        "positionDifference": 0.05741088746935725,
+        "sizeDifference": 0.0007000000000000062
+      },
+      {
+        "index": 7901,
+        "reusedIndex": 7900,
+        "group": "curbs",
+        "positionDifference": 0.2067446008968407,
+        "sizeDifference": 0.008300000000000085
+      },
+      {
+        "index": 7903,
+        "reusedIndex": 7902,
+        "group": "curbs",
+        "positionDifference": 0.21351285675575551,
+        "sizeDifference": 0.008900000000000019
+      },
+      {
+        "index": 7905,
+        "reusedIndex": 7904,
+        "group": "curbs",
+        "positionDifference": 0.22098737520500467,
+        "sizeDifference": 0.00880000000000003
+      },
+      {
+        "index": 7907,
+        "reusedIndex": 7906,
+        "group": "curbs",
+        "positionDifference": 0.2293515423972602,
+        "sizeDifference": 0.008799999999999919
+      },
+      {
+        "index": 9263,
+        "reusedIndex": 9262,
+        "group": "sand",
+        "positionDifference": 0.22211055805610394,
+        "sizeDifference": 0.0275181758116338
+      }
+    ]
+  },
+  "grass": {
+    "fullCoverage": {
+      "marginStuds": 150,
+      "widthStuds": 3814.398547800222,
+      "depthStuds": 6994.304105843654,
+      "maxPartDimensionStuds": 2048,
+      "columns": 2,
+      "rows": 4,
+      "additionalParts": 8
+    },
+    "totalWithTrackAndExistingGrass": 10056,
+    "coarseSideCoverage": [
+      {
+        "cellSizeStuds": 2048,
+        "additionalParts": 9,
+        "totalWithTrackAndExistingGrass": 10057
+      },
+      {
+        "cellSizeStuds": 1024,
+        "additionalParts": 25,
+        "totalWithTrackAndExistingGrass": 10073
+      },
+      {
+        "cellSizeStuds": 512,
+        "additionalParts": 60,
+        "totalWithTrackAndExistingGrass": 10108
+      },
+      {
+        "cellSizeStuds": 256,
+        "additionalParts": 179,
+        "totalWithTrackAndExistingGrass": 10227
+      }
+    ],
+    "notes": [
+      "Part counts estimate coverage only; no grass has been added.",
+      "A flat base covers the ground but leaves elevated sections above it.",
+      "Raised coarse terraces need clearance checks against every road and runoff footprint; these counts do not promise contact with the track."
+    ]
+  }
+}

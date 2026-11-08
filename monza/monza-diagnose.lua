@@ -10,6 +10,22 @@ line("State=" .. tostring(api.State) .. "; next part=" .. tostring(api.NextIndex
 line("Map=Jakarta; place=" .. tostring(game.PlaceId) .. "; confirmed save limit=" .. tostring(api.Config.SaveObjectLimit or "unknown"))
 if api.Phase then line("Stage=" .. tostring(api.Phase)) end
 line("Loaded EditableBuilds children=" .. #folder:GetChildren())
+local storage = game:GetService("ReplicatedStorage")
+local container = storage:FindFirstChild("NetworkContainer")
+local functions = container and container:FindFirstChild("RemoteFunctions")
+local saver = functions and functions:FindFirstChild("BuildSaver")
+if saver then
+    local done, ok, count = false, false, nil
+    task.spawn(function() ok, count = pcall(function() return saver:InvokeServer("GetPlacedAmount") end); done = true end)
+    local deadline = os.clock() + 12
+    repeat task.wait(0.05) until done or os.clock() >= deadline
+    if done and ok and type(count) == "number" then
+        line("Server objects reported to save UI=" .. count .. "; expected=" .. tostring(api.ExpectedServerCount or "not tracked by this builder"))
+        if api.ExpectedServerCount and count ~= api.ExpectedServerCount then line("COUNT MISMATCH: inspect before saving or resuming") end
+    else line("Server count query failed or timed out: " .. tostring(count)) end
+end
+line("Plan parts=" .. api.Count .. "; confirmed indices=" .. (api.NextIndex-1) .. "; newly placed=" .. tostring(api.SentCount or "unknown") .. "; reused=" .. tostring(api.ReusedCount or "unknown"))
+line("A matching server count confirms placement, not successful slot serialization or storage. The exported client has no server save handler.")
 if not request then
     if api.NextIndex > api.Count then line("No remaining track part"); return table.concat(lines, "\n") end
     request = api.GetTarget(api.NextIndex)

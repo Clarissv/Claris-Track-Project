@@ -44,6 +44,16 @@
   ],
   "userConfirmation": {
     "savesAbove10000": true,
-    "exactMaximum": null
+    "exactMaximum": null,
+    "latestObservations": {
+      "date": "2026-11-09",
+      "monzaPartialSaveSucceededAround": 7300,
+      "sepangSaveSucceededAround": 9000,
+      "monzaPartialSaveFailedAround": 9900,
+      "monzaCompletedSaveCount": 10038,
+      "failureNotification": "Failed to save",
+      "consoleError": null,
+      "serverFailureCause": null
+    }
   }
 }

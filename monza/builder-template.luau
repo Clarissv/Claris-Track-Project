@@ -45,7 +45,7 @@ if _G.MonzaBuilder then
     end
 end
 
-local api = { Config = CONFIG, PlaceId = TARGET_PLACE_ID, Count = #PLAN, NextIndex = restoredCheckpoint and restoredCheckpoint.nextIndex or 1, Placed = {}, State = "ready", Phase = "ready" }
+local api = { Config = CONFIG, PlaceId = TARGET_PLACE_ID, Count = #PLAN, NextIndex = restoredCheckpoint and restoredCheckpoint.nextIndex or 1, Placed = {}, SentCount = 0, ReusedCount = 0, State = "ready", Phase = "ready" }
 _G.MonzaBuilder = api
 local preview, manifest, selected, origin, buildScale, appearance, pending, savedCamera
 local catalogCandidates, candidateIndex = {}, 0
@@ -54,6 +54,8 @@ local busy, paused, previewing = false, false, false
 local streamCenter, streamTask
 local follower
 local statusLabel, catalogButton
+local owners, uuidOwners = {}, {}
+local repairing = false
 local function status(message, quiet)
     if not quiet then print("[MonzaBuilder] " .. message) end
     if statusLabel then statusLabel.Text = message end
@@ -329,14 +331,22 @@ local function placedName(name, catalogName)
     local id = name:match("^%{(.-)%}$") or name
     return #id == 36 and id:match(UUID_PATTERN) ~= nil
 end
-local function matches(object, request)
+local function objectUuid(object)
+    local id = object.Name:match("^%{(.-)%}$") or object.Name
+    if #id == 36 and id:match(UUID_PATTERN) then return string.lower(id) end
+end
+local function matches(object, request, reuse)
+    local owner = owners[object] or uuidOwners[objectUuid(object)]
+    if owner and owner ~= request.index then return false, "object is already assigned to part " .. owner end
     if object.ClassName ~= "Part" or object.Shape ~= Enum.PartType.Block then return false, "class/shape differs from the catalog block" end
     -- Live server placements use UUID names, rather than their catalog labels.
     if not placedName(object.Name, request.name) then return false, "unrecognized name=" .. object.Name end
     local positionError = (object.Position - request.cf.Position).Magnitude
-    if positionError > 0.25 then return false, string.format("position differs by %.2f studs", positionError) end
+    -- Existing objects need a close geometric match: nearby short kerbs/paint
+    -- are separate plan parts, even inside the replication tolerance.
+    if positionError > (reuse and 0.01 or 0.25) then return false, string.format("position differs by %.3f studs", positionError) end
     local sizeError = (object.Size - request.size).Magnitude
-    if sizeError > 0.05 then return false, string.format("size differs by %.3f studs", sizeError) end
+    if sizeError > (reuse and 0.01 or 0.05) then return false, string.format("size differs by %.3f studs", sizeError) end
     if object.CFrame.RightVector:Dot(request.cf.RightVector) < 0.999 or object.CFrame.UpVector:Dot(request.cf.UpVector) < 0.999 then return false, "rotation/slope differs" end
     if request.verifyAppearance then
         local actual, expected = object.Color, request.color
@@ -399,17 +409,45 @@ end
 local function findPlacement(folder, request)
     local found
     for _, object in ipairs(folder:GetChildren()) do
-        if matches(object, request) then
+        if matches(object, request, true) then
             if found then return nil, "Multiple matching objects; placement ownership is ambiguous" end
             found = object
         end
     end
     return found
 end
-local function record(object, index)
+local function record(object, index, sent)
+    local owner = owners[object] or uuidOwners[objectUuid(object)]
+    assert(not owner or owner == index, "One server object cannot confirm two plan parts")
+    owners[object] = index
+    local uuid = objectUuid(object)
+    if uuid then uuidOwners[uuid] = index end
     api.Placed[index] = object
+    if sent then
+        api.SentCount = api.SentCount + 1
+        if api.ExpectedServerCount then api.ExpectedServerCount = api.ExpectedServerCount + 1 end
+    else api.ReusedCount = api.ReusedCount + 1 end
     api.NextIndex = index + 1
     pending = nil
+end
+local function queryServerCount()
+    local saver = remote("RemoteFunctions", "BuildSaver", "RemoteFunction")
+    local done, result, queryOk = false, nil, false
+    task.spawn(function() queryOk, result = pcall(function() return saver:InvokeServer("GetPlacedAmount") end); done = true end)
+    local deadline = os.clock() + 12
+    repeat task.wait(0.05) until done or os.clock() >= deadline
+    assert(done and queryOk and type(result) == "number" and result >= 0 and result < math.huge and result % 1 == 0, "Could not verify Jakarta's placed-object count")
+    api.ServerCount = result
+    return result
+end
+function api.VerifyServerCount()
+    assert(not busy and not previewing, "Pause the build before checking its server count")
+    local count = queryServerCount()
+    local report = {serverCount=count, expectedServerCount=api.ExpectedServerCount,
+        confirmedPlanParts=api.NextIndex-1, planParts=#PLAN, sentCount=api.SentCount, reusedCount=api.ReusedCount}
+    report.matches = report.expectedServerCount ~= nil and count == report.expectedServerCount
+    api.LastCountReport = report
+    return report
 end
 function api.Pause()
     paused = true
@@ -418,7 +456,12 @@ end
 function api.Build()
     assert(not ((_G.SepangBuilder and _G.SepangBuilder.State == "building") or (_G.SepangFlatBuilder and _G.SepangFlatBuilder.State == "building")), "Pause the Sepang builder before building Monza")
     assert(not busy and not previewing, "Wait for the preview to finish; only one build can run")
-    if api.NextIndex > #PLAN then status("Build already complete"); return end
+    if api.NextIndex > #PLAN then
+        local report = api.VerifyServerCount()
+        assert(report.matches, "Server object count changed after completion; run diagnose before saving")
+        status("Build already complete; server count verified: " .. report.serverCount)
+        return
+    end
     local folder = workspace:FindFirstChild("EditableBuilds")
     assert(folder, "EditableBuilds is missing; enable build tools")
     local gui = player:FindFirstChild("PlayerGui")
@@ -440,24 +483,20 @@ function api.Build()
         releaseFollower()
         assert(moved, object)
         assert(object, reason or ("Previous request is unconfirmed. " .. failureDetail(pending) .. " No duplicate sent."))
-        record(object, pending.index)
+        record(object, pending.index, true)
     end
     -- Jakarta's save UI queries the server count, including objects streamed out locally.
-    local saver = remote("RemoteFunctions", "BuildSaver", "RemoteFunction")
-    local done, result, queryOk = false, nil, false
-    task.spawn(function() queryOk, result = pcall(function() return saver:InvokeServer("GetPlacedAmount") end); done = true end)
-    local deadline = os.clock() + 12
-    repeat task.wait(0.05) until done or os.clock() >= deadline
-    assert(done and queryOk and type(result) == "number" and result >= 0 and result < math.huge and result % 1 == 0, "Could not verify Jakarta's placed-object count")
-    local currentCount = result
+    local currentCount = queryServerCount()
+    assert(not api.ExpectedServerCount or currentCount == api.ExpectedServerCount, "Server object count changed since the previous pause; run diagnose before resuming")
+    api.ExpectedServerCount = currentCount
     local remainingCount = #PLAN - api.NextIndex + 1
     if restoredCheckpoint then
         assert(currentCount >= api.NextIndex - 1, "Load your saved partial build before resuming this checkpoint")
     end
-    assert(currentCount + remainingCount <= CONFIG.ServerObjectLimit, string.format("%d existing + %d remaining exceeds the %d object limit", currentCount, remainingCount, CONFIG.ServerObjectLimit))
+    if not repairing then assert(currentCount + remainingCount <= CONFIG.ServerObjectLimit, string.format("%d existing + %d remaining exceeds the %d object limit; use Repair to inspect an existing matching build", currentCount, remainingCount, CONFIG.ServerObjectLimit)) end
     if CONFIG.SaveObjectLimit ~= nil then
         assert(type(CONFIG.SaveObjectLimit) == "number" and CONFIG.SaveObjectLimit >= 1 and CONFIG.SaveObjectLimit < math.huge and CONFIG.SaveObjectLimit % 1 == 0, "SaveObjectLimit must be a confirmed positive integer")
-        assert(currentCount + remainingCount <= CONFIG.SaveObjectLimit, string.format("%d existing + %d remaining exceeds the confirmed Jakarta save limit of %d", currentCount, remainingCount, CONFIG.SaveObjectLimit))
+        if not repairing then assert(currentCount + remainingCount <= CONFIG.SaveObjectLimit, string.format("%d existing + %d remaining exceeds the confirmed Jakarta save limit of %d", currentCount, remainingCount, CONFIG.SaveObjectLimit)) end
     end
     api.ClearPreview()
     paused, busy, api.State = false, true, "building"
@@ -479,7 +518,7 @@ function api.Build()
         for x = -1, 1 do for y = -1, 1 do for z = -1, 1 do
             local key = bucketKey(pos + Vector3.new(x, y, z))
             for _, object in ipairs(buckets[key] or {}) do
-                if object.Parent == folder and matches(object, request) then
+                if object.Parent == folder and matches(object, request, true) then
                     if found and found ~= object then return nil, "Multiple matching objects; placement ownership is ambiguous" end
                     found = object
                 end
@@ -508,6 +547,8 @@ function api.Build()
                 -- A confirmed matching part can be reused after reloading the script.
                 record(already, index)
             else
+                assert(api.ExpectedServerCount + 1 <= CONFIG.ServerObjectLimit, "The next missing part would exceed the local server object guard")
+                assert(not CONFIG.SaveObjectLimit or api.ExpectedServerCount + 1 <= CONFIG.SaveObjectLimit, "The next missing part would exceed the confirmed save object limit")
                 pending = request
                 local started = os.clock()
                 local candidates = {}
@@ -542,12 +583,21 @@ function api.Build()
                 assert(not duplicateReason, duplicateReason)
                 assert(object, string.format("Unconfirmed part %d. %s No automatic retry.", index, failureDetail(request)))
                 indexObject(object)
-                record(object, index)
+                record(object, index, true)
                 local remaining = CONFIG.PlacementInterval - (os.clock() - started)
                 if remaining > 0 then task.wait(remaining) end
             end
             if index == 1 or index % 25 == 0 then status(string.format("Confirmed %d / %d parts", index, #PLAN)) end
         end
+        -- Compare with the same authoritative count used by the game's save UI.
+        -- Streaming changes the local folder count, so it cannot establish this.
+        api.Phase = "verifying server count"
+        local serverCount = queryServerCount()
+        if serverCount ~= api.ExpectedServerCount then
+            task.wait(0.5)
+            serverCount = queryServerCount()
+        end
+        assert(serverCount == api.ExpectedServerCount, string.format("Server count mismatch: expected %d, got %d. Run diagnose before saving.", api.ExpectedServerCount, serverCount))
     end)
     if connection then connection:Disconnect() end
     if streamConnection then streamConnection:Disconnect() end
@@ -556,7 +606,21 @@ function api.Build()
     api.State = not ok and "unconfirmed" or (api.NextIndex > #PLAN and "complete" or "paused")
     api.Phase = api.State
     if not ok then error(reason, 0) end
-    status(api.State == "complete" and string.format("Complete: %d server parts confirmed. Save through the game's build-slot UI.", #PLAN) or string.format("Paused at %d / %d; Build / Resume continues", api.NextIndex - 1, #PLAN))
+    status(api.State == "complete" and string.format("Complete: %d track parts; %d server objects verified. Save through the game's build-slot UI.", #PLAN, api.ServerCount) or string.format("Paused at %d / %d; server objects=%d; Build / Resume continues", api.NextIndex - 1, #PLAN, api.ServerCount))
+end
+function api.Repair()
+    assert(not busy and not previewing, "Pause the build before repairing")
+    assert(not pending, "Reconcile the pending placement before repairing; no uncertain request will be resent")
+    -- A matching checkpoint supplies the original transform. Inspect every
+    -- index again, including the prefix the old matcher incorrectly skipped.
+    origin = origin or CONFIG.Origin
+    assert(origin, "Load a matching checkpoint first, or set Config.Origin to the original map transform")
+    restoredCheckpoint = nil
+    repairing = true
+    owners, uuidOwners, api.Placed = {}, {}, {}
+    api.NextIndex, api.SentCount, api.ReusedCount, api.ExpectedServerCount = 1, 0, 0, nil
+    status("Repair: inspecting every track part at the original transform; only missing parts will be placed")
+    return api.Build()
 end
 
 local screen = Instance.new("ScreenGui")
@@ -564,7 +628,7 @@ screen.Name = "MonzaBuilderPanel"
 screen.ResetOnSpawn = false
 screen.Parent = player:WaitForChild("PlayerGui")
 local panel = Instance.new("Frame")
-panel.Size = UDim2.fromOffset(330, 355)
+panel.Size = UDim2.fromOffset(330, 401)
 panel.Position = UDim2.new(0, 18, 0.5, -177)
 panel.BackgroundColor3 = Color3.fromRGB(24, 28, 35)
 panel.Parent = screen
@@ -616,6 +680,11 @@ button("View map", 12, 258, api.ViewMap)
 button("Back camera", 172, 258, api.RestoreCamera)
 button("Clear preview", 12, 304, api.ClearPreview)
 button("Hide panel", 172, 304, function() screen.Enabled = false end)
+button("Repair missing parts", 12, 350, api.Repair)
+button("Check server count", 172, 350, function()
+    local report = api.VerifyServerCount()
+    status(string.format("Save UI objects: %d; expected: %s; %s", report.serverCount, tostring(report.expectedServerCount or "unknown"), report.matches and "count verified" or "run diagnose"))
+end)
 function api.Show() screen.Enabled = true end
 function api.Unload()
     assert(not busy and not previewing, "Pause the build or wait for preview generation before unloading")

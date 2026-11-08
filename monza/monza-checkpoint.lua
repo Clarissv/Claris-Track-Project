@@ -1,10 +1,14 @@
 -- Export progress before leaving a suspended build. Does not place/delete/save game objects.
 local dataPath, inlineJson, checkpointPath = ...
 local api = assert(_G.MonzaBuilder, "Keep the existing Monza builder loaded")
+assert(api.State ~= "building", "Pause and wait for the build to stop before exporting a checkpoint")
 assert(game.PlaceId == 14005966837 and api.PlaceId == game.PlaceId, "Monza: export this checkpoint from the Jakarta builder")
 local request = assert(api.RequestDiagnostics(), "No captured placement transform")
 assert(type(writefile) == "function", "The executor needs writefile to export the checkpoint")
 assert(not (request.index == api.NextIndex and request.observed ~= nil), "A placement was sent but is unconfirmed; reconcile it before exporting a checkpoint")
+if api.VerifyServerCount then
+    assert(api.VerifyServerCount().matches, "Server count mismatch; run diagnose before exporting a checkpoint")
+end
 local http = game:GetService("HttpService")
 local plan = http:JSONDecode(inlineJson or readfile(dataPath or "MonzaTrack/monza-plan.json"))
 assert(plan.meta and plan.meta.partCount == api.Count and #plan.parts == api.Count, "Keep the matching plan in the executor workspace")

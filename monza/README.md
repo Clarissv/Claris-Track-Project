@@ -26,8 +26,11 @@ including the pit merge and accessories. Paint and the finish line do not
 contribute any collision surface.
 
 The exported Jakarta client uses the same catalog and placement payload as Jawa Timur.
-You confirmed that Jakarta saves builds above 10,000 objects. Its server-side
-save handler was not exported, so the exact maximum is still unknown.
+Your latest tests saved Monza around 7,300 parts and Sepang around 9,000, but
+Monza failed around 9,900 and at completion with only "Failed to save".
+Its server-side save handler was not exported, so the exact maximum and cause
+of the failure are still unknown. Object count alone does not establish whether
+a slot can store this build.
 The 11,000-object guard is a local builder setting. If the exact save limit is known, set
 `_G.MonzaBuilder.Config.SaveObjectLimit` before building; the guard includes
 other placed objects reported by the server.
@@ -60,6 +63,23 @@ Build Tools Plus is required for appearance controls. Your character follows
 placement to keep distant pieces streamed, then returns when paused or finished.
 Placement is confirmed against the server's objects; uncertain placements stop
 without resending duplicates.
+
+The previous matcher reused 10 distinct neighbouring pieces, reproducing the
+reported 10,038 save objects exactly (10,037 track pieces plus one grass plate).
+This release assigns each server object to one plan index and uses tighter
+geometry checks when reusing existing parts. A fresh completed build with one
+grass plate should report **10,048 server objects**. Pause and completion now
+verify the authoritative count used by the game's save UI. This fixes the
+placement discrepancy; a successful save still needs a live check.
+
+For a matching old build, export its checkpoint using the old loader before
+loading the new release in `"resume"` mode. Keep the matching partial game build
+loaded, then use **Repair missing parts** or `_G.MonzaBuilder.Repair()`.
+Repair inspects all indices at the checkpoint's original transform and places
+only missing pieces, including pieces skipped before the checkpoint index.
+Repair can be paused and continued with Build / Resume. It can also use an
+explicit `Config.Origin` containing the exact original transform.
+See `ISSUES.md` and `placement-and-grass-report.json` for the findings and grass estimates.
 
 Use Pause to suspend and Build/Resume to continue in the same server. Save the
 completed map through the game's build-slot UI.
@@ -129,6 +149,7 @@ the large model or extension:
 ```powershell
 node compile-monza.mjs
 node --test test-monza.mjs
+node analyze-build.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File test-builder.ps1 -HttpLoader loader.lua
 node prepare-publish.mjs
 ```

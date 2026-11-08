@@ -365,6 +365,8 @@ api = fresh()
 workspace.StreamingEnabled = true
 api.Config.FollowBuild = false
 local streamedTarget = api.GetTarget(1)
+-- This server object exists before it streams into the local folder.
+placedCountOverride = function() return #builds:GetChildren() + (streamCalls == 0 and 1 or 0) end
 onStream = function()
     if streamCalls == 1 then
         local object = instance("Part")
@@ -416,7 +418,11 @@ workspace.StreamingEnabled = true
 api.Inspect()
 local originalSpawn, heldTasks = task.spawn, {}
 local spawned = 0
-task.spawn = function(fn) spawned = spawned + 1; if spawned == 1 then fn() else heldTasks[#heldTasks+1] = fn end end
+-- Count queries complete; only the streaming request remains pending.
+task.spawn = function(fn)
+    spawned = spawned + 1
+    if spawned == 2 then heldTasks[#heldTasks+1] = fn else fn() end
+end
 api.Build()
 task.spawn = originalSpawn
 assert(api.State == "complete" and #calls == 2 and #heldTasks == 1 and clock < 7, "A streaming call that never returns must not hang or accumulate requests")
@@ -427,6 +433,37 @@ task.spawn = function(fn) heldTasks[#heldTasks+1] = fn end
 ok = pcall(api.Build)
 task.spawn = originalSpawn
 assert(not ok and #calls == 0 and #heldTasks == 1 and clock < 12.2, "A stalled save-count query must time out before any placement")
+
+-- Adjacent tiny slabs fit inside the old .25/.05 matcher tolerances.
+-- They must remain two distinct server objects across pause and reload.
+local originalParts = fixtureDocument.parts
+local closeA, closeB = {}, {}
+for k,v in ipairs(originalParts[2]) do closeA[k], closeB[k] = v,v end
+closeA[1], closeB[1], closeB[6] = 0, .10, closeB[6]+.005
+fixtureDocument.parts = {closeA,closeB}
+api = fresh()
+pauseAfterFirst = true
+api.Build()
+api.Build()
+assert(#calls == 2 and #builds:GetChildren() == 2 and api.SentCount == 2, "One nearby object must never confirm two plan indices")
+local originalOrigin = api.GetTarget(1).origin
+-- Simulate the old builder's missing second slab; reload loses ownership data.
+builds:GetChildren()[2]:Destroy()
+api = loadBuilder()
+api.Config.Origin = originalOrigin
+pauseAfterFirst = false
+api.Repair()
+assert(#calls == 3 and #builds:GetChildren() == 2 and api.ReusedCount == 1 and api.SentCount == 1, "Repair must recover a skipped neighbour after reloading, without duplicating the first slab")
+api.Repair()
+assert(#calls == 3 and api.ReusedCount == 2 and api.SentCount == 0, "Repairing a complete map must only inspect existing geometry")
+local countReport = api.VerifyServerCount()
+assert(countReport.matches and countReport.serverCount == 2, "The final server count must agree with newly placed and reused objects")
+placedCountOverride = function() return 1 end
+ok = pcall(api.Build)
+assert(not ok and #calls == 3, "A deleted server object must prevent a false completion report")
+report = diagnoseBuilder()
+assert(report:find("COUNT MISMATCH",1,true), "Save diagnostics must include authoritative count discrepancies")
+fixtureDocument.parts = originalParts
 
 api = fresh()
 api.Config.Origin = CFrame.fromMatrix(vector(100,25,200),vector(0,0,-1),vector(0,1,0))
@@ -481,7 +518,7 @@ ok = pcall(api.Build)
 assert(not ok and #calls == 1, "Mismatched parts must not trigger duplicate requests")
 
 api = fresh()
-placementOverride = function(o) o.Name = "E7938BEF-58C4-4E6D-AF52-B01A0BB379C4" end
+placementOverride = function(o) o.Name = string.format("E7938BEF-58C4-4E6D-AF52-B01A0BB379C%d", 3+#calls) end
 api.Build()
 assert(#calls == 2 and api.State == "complete", "UUID names must confirm valid placements")
 api.Build()

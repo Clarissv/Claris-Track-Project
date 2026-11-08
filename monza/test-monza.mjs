@@ -9,11 +9,28 @@ import {boxBasis,boxCorners} from './geometry.mjs';
 import {dot,sub} from './track-geometry.mjs';
 import {smoothDrivingPoints,profileMetrics} from './smooth-surface.mjs';
 import {auditJoins,overlapVertices,topHeight,collisionSampler} from './surface-audit.mjs';
+import {auditReuse,estimateGrass} from './analyze-build.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),read=name=>JSON.parse(fs.readFileSync(path.join(here,name))),plan=read('monza-plan.json'),reference=read('source/monza-reference.json'),trace=read('source/monza-surfaces.json');
 const smoothed=smoothDrivingPoints(reference.points,{heightSigma:plan.meta.settings.heightSmoothingStuds,bankSigma:plan.meta.settings.bankSmoothingStuds});
 const point=i=>({...smoothed[i],wr:plan.centerline[i][3],wl:plan.centerline[i][4],pos:[smoothed[i].pos[0],smoothed[i].pos[1]+plan.meta.groundLift,smoothed[i].pos[2]]});
 function inside(part,q,tolerance=.001){const basis=boxBasis(part),delta=sub(q,part.slice(0,3));return Math.abs(dot(delta,basis.right))<=part[3]/2+tolerance&&Math.abs(dot(delta,basis.back))<=part[5]/2+tolerance;}
 const roadAt=Array(reference.points.length);for(const span of plan.meta.roadSegments)for(let i=span.start;i<=span.end;i++)roadAt[i]=span.index;
+
+test('the original matcher reproduces 10038 objects; strict geometry separates skipped neighbours',()=>{
+  const old=auditReuse(plan);
+  assert.equal(old.planParts,10047);assert.equal(old.skippedByOldMatcher,10);
+  assert.equal(old.withOneExistingGrass,10038);
+  assert.equal(auditReuse(plan,{positionTolerance:.01,sizeTolerance:.01}).skippedByOldMatcher,0);
+});
+
+test('grass cost includes the 2048 dimension limit and the standing grass object',()=>{
+  const grass=estimateGrass(plan);
+  assert.equal(grass.fullCoverage.additionalParts,8);
+  assert.equal(grass.totalWithTrackAndExistingGrass,10056);
+  assert.deepEqual(grass.coarseSideCoverage.map(p=>p.additionalParts),[9,25,60,179]);
+  assert(grass.fullCoverage.widthStuds/grass.fullCoverage.columns<=2048);
+  assert(grass.fullCoverage.depthStuds/grass.fullCoverage.rows<=2048);
+});
 test('part budget, dimensions, orientation and separate Monza runtime',()=>{
   assert.equal(plan.meta.format,'monza-elevated-v1');assert(plan.parts.length<=11000);assert.equal(plan.meta.partCount,plan.parts.length);
   assert.deepEqual(plan.meta.gameTarget,{name:'Jakarta',placeId:14005966837,saveObjectLimit:null});
