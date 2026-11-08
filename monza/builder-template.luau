@@ -1,10 +1,12 @@
--- Elevated Monza builder for Jawa Timur (place 110369730911937).
+-- Elevated Monza builder for Jakarta (place 14005966837).
 -- TUM centreline/widths with model elevation, low kerbs, pit lane and tidied runoff.
 -- Template: use monza-run.lua to load the builder and its separate JSON plan.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 assert(RunService:IsClient(), "MonzaBuilder must run on the client")
+local TARGET_PLACE_ID = 14005966837
+assert(game.PlaceId == TARGET_PLACE_ID, "Monza: join Jakarta (place 14005966837) before loading this builder")
 local player = Players.LocalPlayer
 
 -- Adjust before the first build, or through _G.MonzaBuilder.Config.
@@ -25,7 +27,8 @@ local CONFIG = {
     FollowHeight = 12,
     FollowSettleTime = 0.10,
     MaxObjects = 11000,
-    ServerObjectLimit = 20000,
+    ServerObjectLimit = 11000, -- Local count guard; Jakarta's server save cap is not established by the export.
+    SaveObjectLimit = nil, -- Set only to a confirmed Jakarta save limit; includes other placed objects.
     ApplyAppearance = true, -- Color/material controls require the game's Build Tools Plus access.
 }
 -- GENERATED_DATA
@@ -42,7 +45,7 @@ if _G.MonzaBuilder then
     end
 end
 
-local api = { Config = CONFIG, Count = #PLAN, NextIndex = restoredCheckpoint and restoredCheckpoint.nextIndex or 1, Placed = {}, State = "ready", Phase = "ready" }
+local api = { Config = CONFIG, PlaceId = TARGET_PLACE_ID, Count = #PLAN, NextIndex = restoredCheckpoint and restoredCheckpoint.nextIndex or 1, Placed = {}, State = "ready", Phase = "ready" }
 _G.MonzaBuilder = api
 local preview, manifest, selected, origin, buildScale, appearance, pending, savedCamera
 local catalogCandidates, candidateIndex = {}, 0
@@ -439,24 +442,23 @@ function api.Build()
         assert(object, reason or ("Previous request is unconfirmed. " .. failureDetail(pending) .. " No duplicate sent."))
         record(object, pending.index)
     end
-    -- The game exposes a placed-count query in its normal save UI.
-    local container = ReplicatedStorage:FindFirstChild("NetworkContainer")
-    local functions = container and container:FindFirstChild("RemoteFunctions")
-    local saver = functions and functions:FindFirstChild("BuildSaver")
-    local currentCount = #folder:GetChildren()
-    if saver and saver:IsA("RemoteFunction") then
-        local done, result, queryOk = false, nil, false
-        task.spawn(function() queryOk, result = pcall(function() return saver:InvokeServer("GetPlacedAmount") end); done = true end)
-        local deadline = os.clock() + 12
-        repeat task.wait(0.05) until done or os.clock() >= deadline
-        assert(done and queryOk and type(result) == "number", "Could not verify the game's placed-object count")
-        currentCount = result
-    end
+    -- Jakarta's save UI queries the server count, including objects streamed out locally.
+    local saver = remote("RemoteFunctions", "BuildSaver", "RemoteFunction")
+    local done, result, queryOk = false, nil, false
+    task.spawn(function() queryOk, result = pcall(function() return saver:InvokeServer("GetPlacedAmount") end); done = true end)
+    local deadline = os.clock() + 12
+    repeat task.wait(0.05) until done or os.clock() >= deadline
+    assert(done and queryOk and type(result) == "number" and result >= 0 and result < math.huge and result % 1 == 0, "Could not verify Jakarta's placed-object count")
+    local currentCount = result
     local remainingCount = #PLAN - api.NextIndex + 1
     if restoredCheckpoint then
         assert(currentCount >= api.NextIndex - 1, "Load your saved partial build before resuming this checkpoint")
     end
     assert(currentCount + remainingCount <= CONFIG.ServerObjectLimit, string.format("%d existing + %d remaining exceeds the %d object limit", currentCount, remainingCount, CONFIG.ServerObjectLimit))
+    if CONFIG.SaveObjectLimit ~= nil then
+        assert(type(CONFIG.SaveObjectLimit) == "number" and CONFIG.SaveObjectLimit >= 1 and CONFIG.SaveObjectLimit < math.huge and CONFIG.SaveObjectLimit % 1 == 0, "SaveObjectLimit must be a confirmed positive integer")
+        assert(currentCount + remainingCount <= CONFIG.SaveObjectLimit, string.format("%d existing + %d remaining exceeds the confirmed Jakarta save limit of %d", currentCount, remainingCount, CONFIG.SaveObjectLimit))
+    end
     api.ClearPreview()
     paused, busy, api.State = false, true, "building"
     -- Index confirmed/pre-existing objects once. New requests wait only on newly added
@@ -626,6 +628,6 @@ end
 if restoredCheckpoint then
     status(string.format("Checkpoint loaded: %d confirmed; next part %d. Load the saved build, inspect, then Resume.", api.NextIndex - 1, api.NextIndex))
 else
-    status(string.format("Monza: %d / %d objects. Inspect, preview, then Build. Lowest surfaces clear the grass; elevation and low kerbs are retained.", #PLAN, CONFIG.MaxObjects))
+    status(string.format("Jakarta Monza: %d / %d objects. Inspect, preview, then Build. Lowest surfaces clear the grass; elevation and low kerbs are retained.", #PLAN, CONFIG.MaxObjects))
 end
 return api

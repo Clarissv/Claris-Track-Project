@@ -1,0 +1,49 @@
+{
+  "format": "monza-game-target-v1",
+  "name": "Jakarta",
+  "placeId": 14005966837,
+  "saveObjectLimit": null,
+  "localObjectGuard": 11000,
+  "saveLimitEvidence": "Server-side save handler is absent from the client export; maximum save count is not established.",
+  "evidence": [
+    {
+      "file": "ReplicatedStorage.Modules.Network (1_199629).lua",
+      "sha256": "2bda2abf991ad560811a19b1403d55495b212ec86df0d1c0cf06aa97b010afa7",
+      "claim": "NetworkContainer.RemoteEvents and RemoteFunctions route named build calls."
+    },
+    {
+      "file": "ReplicatedStorage.ClientContainer.UITemplate.AdvanceBuildTools.Refactored.Tools.PlaceTool (1_199602).lua",
+      "sha256": "22701664e1078486d2b0109079a40323e0caa0b396ae07f982a4704ddd035c23",
+      "claim": "PlacementSystem accepts name, CFrame, size, transparency, colour, material, variant and collision."
+    },
+    {
+      "file": "ReplicatedStorage.ClientContainer.UITemplate.AdvanceBuildTools.Refactored.UI.CatalogBuilder (1_199617).lua",
+      "sha256": "d4cb9e91fd1fc8c1c3cb3d2fda18c5d28018b194a908e96ec50f6fca206f70af",
+      "claim": "GetCatalogManifest entries use name, guid, category and plus."
+    },
+    {
+      "file": "Players.LocalPlayer.PlayerGui.BUILDSLOT.LocalScript (1_455110).lua",
+      "sha256": "563ae2b2337003f4cf52cd87d67afa2a18a2ad8aac6796696933a5669f60c47a",
+      "claim": "BuildSaver GetPlacedAmount; Jakarta save slots; build-save UI for the server owner."
+    },
+    {
+      "file": "ReplicatedStorage.Modules.BuildToolsSubConfig (1_199680).lua",
+      "sha256": "b181f5e88f37a337145f5afe00701b1edfa8d784fe40565cf1472ff28090c1c8",
+      "claim": "BT_SubPermanent and BT_SubExpiry appearance subscription attributes."
+    },
+    {
+      "file": "ReplicatedStorage.ClientContainer.UITemplate.AdvanceBuildTools.Refactored.Catalog.Config (1_199618).lua",
+      "sha256": "9047217219ba32a6313aa203018c48c3b924a6b441ebc0edb712b57d441e6044",
+      "claim": "Part dimensions 0.001 to 2048."
+    },
+    {
+      "file": "ReplicatedStorage.Shared.Place (1_199746).lua",
+      "sha256": "dacc13e30d9962e1e5890bb29f09a02757f9b32926dc7d60da7a9b781ef29c8c",
+      "claim": "Jakarta place ID 14005966837."
+    }
+  ],
+  "userConfirmation": {
+    "savesAbove10000": true,
+    "exactMaximum": null
+  }
+}

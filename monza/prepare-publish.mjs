@@ -11,6 +11,7 @@ for(const name of ['README.md','THIRD-PARTY.txt','.gitignore','.gitattributes','
 fs.mkdirSync(path.join(destination,'source'),{recursive:true});
 for(const name of ['Monza.csv','Monza-raceline.csv','LICENSE','source-info.json','README.md','monza-reference.json','monza-surfaces.json'])fs.copyFileSync(path.join(here,'source',name),path.join(destination,'source',name));
 for(const name of ['Monza-raceline.png','Monza-curvature.png','racetrack-database-README.md'])fs.copyFileSync(path.join(here,'source',name),path.join(destination,'source',name));
+fs.copyFileSync(path.join(here,'source/jakarta-target.json'),path.join(destination,'source/jakarta-target.json'));
 for(const name of ['build-pit-entry.png','build-pit-exit.png'])fs.copyFileSync(path.join(here,name),path.join(destination,name));
 for(const file of manifest.files){fs.mkdirSync(path.dirname(path.join(destination,file.path)),{recursive:true});fs.copyFileSync(path.join(here,file.path),path.join(destination,file.path));}
 console.log(JSON.stringify({directory:destination,parts:manifest.partCount,release:manifest.version,entry:'https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/loader.lua'},null,2));

@@ -7,6 +7,7 @@ local function line(text) lines[#lines + 1] = text; print("[Monza diagnostic] " 
 local function vector(v) return string.format("(%.3f, %.3f, %.3f)", v.X, v.Y, v.Z) end
 local request = api.RequestDiagnostics and api.RequestDiagnostics()
 line("State=" .. tostring(api.State) .. "; next part=" .. tostring(api.NextIndex) .. "; streaming=" .. tostring(workspace.StreamingEnabled))
+line("Map=Jakarta; place=" .. tostring(game.PlaceId) .. "; confirmed save limit=" .. tostring(api.Config.SaveObjectLimit or "unknown"))
 if api.Phase then line("Stage=" .. tostring(api.Phase)) end
 line("Loaded EditableBuilds children=" .. #folder:GetChildren())
 if not request then

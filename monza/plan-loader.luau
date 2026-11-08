@@ -15,6 +15,7 @@ assert(decoded and type(document) == "table", "Monza: invalid plan JSON: " .. to
 local meta = document.meta
 local PLAN = document.parts
 assert(type(meta) == "table" and meta.format == "monza-elevated-v1", "Monza: incompatible plan. Copy the matching ribbon builder and plan together.")
+assert(type(meta.gameTarget) == "table" and meta.gameTarget.placeId == TARGET_PLACE_ID and meta.gameTarget.name == "Jakarta", "Monza: use the matching Jakarta plan and builder")
 assert(type(PLAN) == "table" and #PLAN > 0 and #PLAN <= CONFIG.MaxObjects and meta.partCount == #PLAN, "Monza: invalid plan count or exceeded " .. CONFIG.MaxObjects .. "-object budget")
 local function finite(n) return type(n) == "number" and n == n and math.abs(n) < math.huge end
 local anchor = meta.placementAnchor
@@ -58,11 +59,13 @@ for k = 1, 3 do assert(finite(bounds.min[k]) and finite(bounds.max[k]) and bound
 local PLAN_BOUNDS = {Vector3.new(bounds.min[1], bounds.min[2], bounds.min[3]), Vector3.new(bounds.max[1], bounds.max[2], bounds.max[3])}
 local restoredCheckpoint
 if launchMode == "resume" then
-    local ok, contents = pcall(readfile, checkpointPath or "MonzaTrack/monza-elevated-checkpoint.json")
-    if not ok and checkpointPath then ok, contents = pcall(readfile, "MonzaTrack/monza-elevated-checkpoint.json") end
+    local ok, contents = pcall(readfile, checkpointPath or "MonzaTrack/monza-jakarta-checkpoint.json")
+    if not ok and checkpointPath then ok, contents = pcall(readfile, "MonzaTrack/monza-jakarta-checkpoint.json") end
     assert(ok, "Monza: checkpoint is missing. Export it from the previous session first.")
     local decoded, saved = pcall(function() return game:GetService("HttpService"):JSONDecode(contents) end)
-    assert(decoded and type(saved) == "table" and saved.format == "monza-checkpoint-v1", "Monza: invalid checkpoint")
+    assert(decoded and type(saved) == "table" and saved.format == "monza-checkpoint-v2", "Monza: use a Jakarta checkpoint; Jawa Timur checkpoints require their original loader")
+    assert(saved.placeId == TARGET_PLACE_ID, "Monza: checkpoint belongs to a different map; start a fresh Jakarta build")
+    if saved.saveObjectLimit ~= nil then assert(finite(saved.saveObjectLimit) and saved.saveObjectLimit >= 1 and saved.saveObjectLimit % 1 == 0, "Monza: invalid checkpoint save limit") end
     local checksum = 0
     for _, p in ipairs(PLAN) do for _, n in ipairs(p) do checksum = (checksum * 65599 + math.floor(n * 10000 + 0.5)) % 2147483647 end end
     assert(saved.count == #PLAN and saved.checksum == string.format("%.0f", checksum), "Monza: checkpoint belongs to different track geometry")
@@ -80,6 +83,7 @@ if launchMode == "resume" then
     end
     CONFIG.Origin, CONFIG.Scale = CFrame.new(table.unpack(saved.origin)), saved.scale
     CONFIG.CatalogName, CONFIG.ApplyAppearance = saved.catalogName, saved.applyAppearance
+    if saved.saveObjectLimit ~= nil then CONFIG.SaveObjectLimit = saved.saveObjectLimit end
     restoredCheckpoint = saved
 end
 raw, inlineJson, document = nil, nil, nil

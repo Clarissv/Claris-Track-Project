@@ -15,3 +15,7 @@ Required base monza.kn5 and other referenced track files were absent.
 Extension files and textures are not used or redistributed by this package.
 
 Geometry/runtime helpers were adapted from this workspace's Sepang Flat package.
+
+Jakarta runtime contract: user-supplied [14005966837] Jakarta client export.
+Selected file hashes and verified calls are recorded in source/jakarta-target.json.
+The raw client export is not included in the publishing package.

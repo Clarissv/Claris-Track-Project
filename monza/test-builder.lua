@@ -100,6 +100,9 @@ roadTemplate.Color, roadTemplate.Material, roadTemplate.MaterialVariant = Color3
 local network = child(storage, "Folder", "NetworkContainer")
 local placement = child(child(network, "Folder", "RemoteEvents"), "RemoteEvent", "PlacementSystem")
 local manifest = child(child(network, "Folder", "RemoteFunctions"), "RemoteFunction", "GetCatalogManifest")
+local saver = child(network:FindFirstChild("RemoteFunctions"), "RemoteFunction", "BuildSaver")
+local placedCountOverride
+function saver:InvokeServer(action) assert(action == "GetPlacedAmount", "Wrong Jakarta count action"); if placedCountOverride then return placedCountOverride() end; return #builds:GetChildren() end
 local catalogNames = { "Block" }
 function manifest:InvokeServer()
     local result = {}
@@ -130,7 +133,7 @@ function placement:FireServer(...)
     if pauseAfterFirst and #calls == 1 then _G.MonzaBuilder.Pause() end
 end
 local fixtureDocument = {
-    meta = { format = "monza-elevated-v1", partCount = 2,
+    meta = { format = "monza-elevated-v1", gameTarget = {placeId=14005966837,name="Jakarta"}, partCount = 2,
         palette = {{rgb = {65,66,66}, material = "Asphalt"}},
         planBounds = {min = {-3,-1,-3}, max = {9,0,3}} },
     parts = {{0,-0.5,0,6,1,6,1,0.1,0},{6,-0.5,0,6,1,6,1}}
@@ -149,13 +152,13 @@ end
 local missingFile, badJson = false, false
 local checkpointDocument
 readfile = function(path)
-    if path == "MonzaTrack/monza-elevated-checkpoint.json" or path == "monza-elevated-checkpoint.json" then assert(checkpointDocument, "No checkpoint"); return "checkpoint-json" end
+    if path == "MonzaTrack/monza-jakarta-checkpoint.json" or path == "monza-jakarta-checkpoint.json" then assert(checkpointDocument, "No checkpoint"); return "checkpoint-json" end
     assert(path == "MonzaTrack/monza-plan.json" or path == "custom/plan.json", "Wrong workspace plan path")
     assert(not missingFile, "File does not exist")
     return "fixture-json"
 end
-writefile = function(path, raw) assert((path == "MonzaTrack/monza-elevated-checkpoint.json" or path == "monza-elevated-checkpoint.json") and raw == "checkpoint-json") end
-game = { GetService = function(_, name)
+writefile = function(path, raw) assert((path == "MonzaTrack/monza-jakarta-checkpoint.json" or path == "monza-jakarta-checkpoint.json") and raw == "checkpoint-json") end
+game = { PlaceId = 14005966837, GetService = function(_, name)
     if name == "Players" then return { LocalPlayer = player } end
     if name == "ReplicatedStorage" then return storage end
     if name == "RunService" then return { IsClient = function() return true end } end
@@ -179,6 +182,7 @@ local function fresh()
     if _G.MonzaBuilder and _G.MonzaBuilder.Unload then _G.MonzaBuilder.Unload() end
     _G.MonzaBuilder = nil
     calls, reject, pauseAfterFirst = {}, false, false
+    placedCountOverride = nil
     placementOverride, streamCalls, workspace.StreamingEnabled, rejectAt, onStream, onPlacement = nil, 0, false, nil, nil, nil
     _G.MonzaTrackPreflight = nil
     for _, o in ipairs(builds:GetChildren()) do o:Destroy() end
@@ -200,6 +204,14 @@ assert(not blocked and #calls == 0 and _G.SepangBuilder == elevatedSentinel, "Co
 elevatedSentinel.State = "paused"
 assert(#calls == 0, "Loading must not publish parts")
 assert(pivotCalls == 0 and not root.Anchored, "Loading must not move or freeze the character")
+game.PlaceId = 110369730911937
+local wrongMap = pcall(loadBuilder)
+game.PlaceId = 14005966837
+assert(not wrongMap and _G.MonzaBuilder == api and #calls == 0, "Jakarta loader must reject Jawa Timur before replacing a session or placing objects")
+fixtureDocument.meta.gameTarget.placeId = 110369730911937
+wrongMap = pcall(loadBuilder)
+fixtureDocument.meta.gameTarget.placeId = 14005966837
+assert(not wrongMap and _G.MonzaBuilder == api, "A different-map plan must preserve the existing session")
 -- A failed data load must leave the current panel/session usable.
 missingFile = true
 local ok, message = pcall(loadBuilder)
@@ -402,10 +414,18 @@ api.Config.FollowBuild = false
 workspace.StreamingEnabled = true
 api.Inspect()
 local originalSpawn, heldTasks = task.spawn, {}
-task.spawn = function(fn) heldTasks[#heldTasks+1] = fn end
+local spawned = 0
+task.spawn = function(fn) spawned = spawned + 1; if spawned == 1 then fn() else heldTasks[#heldTasks+1] = fn end end
 api.Build()
 task.spawn = originalSpawn
 assert(api.State == "complete" and #calls == 2 and #heldTasks == 1 and clock < 7, "A streaming call that never returns must not hang or accumulate requests")
+api = fresh()
+api.Inspect()
+heldTasks = {}
+task.spawn = function(fn) heldTasks[#heldTasks+1] = fn end
+ok = pcall(api.Build)
+task.spawn = originalSpawn
+assert(not ok and #calls == 0 and #heldTasks == 1 and clock < 12.2, "A stalled save-count query must time out before any placement")
 
 api = fresh()
 api.Config.Origin = CFrame.fromMatrix(vector(100,25,200),vector(0,0,-1),vector(0,1,0))
@@ -428,6 +448,16 @@ checkpointDocument.checksum = "mismatch"
 ok = pcall(loadBuilder,"MonzaTrack/monza-plan.json",nil,"resume")
 assert(not ok and _G.MonzaBuilder == api, "Mismatched checkpoint must not replace the current builder")
 checkpointDocument.checksum = originalChecksum
+local checkpointPlace = checkpointDocument.placeId
+checkpointDocument.placeId = 110369730911937
+ok = pcall(loadBuilder,"MonzaTrack/monza-plan.json",nil,"resume")
+assert(not ok and _G.MonzaBuilder == api, "A checkpoint from another map must not resume in Jakarta")
+checkpointDocument.placeId = checkpointPlace
+local checkpointFormat = checkpointDocument.format
+checkpointDocument.format = "monza-checkpoint-v1"
+ok = pcall(loadBuilder,"MonzaTrack/monza-plan.json",nil,"resume")
+assert(not ok and _G.MonzaBuilder == api, "Legacy checkpoints without a map binding must use their original loader")
+checkpointDocument.format = checkpointFormat
 api = fresh()
 api = loadBuilder("MonzaTrack/monza-plan.json",nil,"resume")
 ok = pcall(api.Build)
@@ -475,6 +505,26 @@ api = fresh()
 api.Config.ServerObjectLimit = 1
 ok = pcall(api.Build)
 assert(not ok and #calls == 0, "Known server object cap must be checked before publication")
+api = fresh()
+api.Config.SaveObjectLimit = 1
+ok = pcall(api.Build)
+assert(not ok and #calls == 0, "A confirmed save cap must stop placement before an unsavable build")
+api = fresh()
+placedCountOverride = function() return 10999 end
+ok = pcall(api.Build)
+assert(not ok and #calls == 0, "Server count must include streamed-out objects rather than just loaded children")
+api = fresh()
+local saverParent = saver.Parent
+saver.Parent = nil
+ok = pcall(api.Build)
+saver.Parent = saverParent
+assert(not ok and #calls == 0, "Missing Jakarta save-count endpoint must not fall back to a streamed local count")
+for _, value in ipairs({-1, 1.5, math.huge, "Failed"}) do
+    api = fresh()
+    placedCountOverride = function() return value end
+    ok = pcall(api.Build)
+    assert(not ok and #calls == 0, "Invalid server counts must not allow placement")
+end
 
 api = fresh()
 catalogNames = { "Rectangle A", "Rectangle B" }

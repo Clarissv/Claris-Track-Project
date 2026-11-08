@@ -1,6 +1,7 @@
 -- Export progress before leaving a suspended build. Does not place/delete/save game objects.
 local dataPath, inlineJson, checkpointPath = ...
 local api = assert(_G.MonzaBuilder, "Keep the existing Monza builder loaded")
+assert(game.PlaceId == 14005966837 and api.PlaceId == game.PlaceId, "Monza: export this checkpoint from the Jakarta builder")
 local request = assert(api.RequestDiagnostics(), "No captured placement transform")
 assert(type(writefile) == "function", "The executor needs writefile to export the checkpoint")
 assert(not (request.index == api.NextIndex and request.observed ~= nil), "A placement was sent but is unconfirmed; reconcile it before exporting a checkpoint")
@@ -29,7 +30,7 @@ end end
 for row=1,3 do for k=1,3 do transform[row]=transform[row]-transform[3+(row-1)*3+k]*a[k] end end
 local checksum = 0
 for _, part in ipairs(plan.parts) do for _, n in ipairs(part) do checksum = (checksum * 65599 + math.floor(n * 10000 + 0.5)) % 2147483647 end end
-local saved = { format = "monza-checkpoint-v1", count = api.Count, nextIndex = api.NextIndex,
+local saved = { format = "monza-checkpoint-v2", placeId = game.PlaceId, saveObjectLimit = api.Config.SaveObjectLimit, count = api.Count, nextIndex = api.NextIndex,
     checksum = string.format("%.0f", checksum), origin = transform, scale = scale,
     catalogName = request.baseCatalogName or request.name,
     applyAppearance = request.applyAppearance == true, catalogRoles = {} }
@@ -38,7 +39,7 @@ for _, role in ipairs(plan.meta.catalogRoles or {}) do
     for _, index in ipairs(role.partIndices) do indices[#indices + 1] = index end
     saved.catalogRoles[#saved.catalogRoles + 1] = {name=role.name, appearance=role.appearance, partIndices=indices}
 end
-writefile(checkpointPath or "MonzaTrack/monza-elevated-checkpoint.json", http:JSONEncode(saved))
+writefile(checkpointPath or "MonzaTrack/monza-jakarta-checkpoint.json", http:JSONEncode(saved))
 api.Pause()
 print(string.format("[Monza checkpoint] Saved %d confirmed parts; resume at part %d. Save the partial build through the game's build-slot UI before rejoining.", saved.nextIndex - 1, saved.nextIndex))
 return saved

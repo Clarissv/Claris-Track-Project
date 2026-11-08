@@ -1,11 +1,20 @@
 # Monza with elevation
 
-Separate Monza build for Jawa Timur. Includes the F1 circuit, pit lane, markings,
+Separate Monza build for **Jakarta (place 14005966837)**. Includes the F1 circuit, pit lane, markings,
 low ramped kerbs, astroturf and gravel. Buildings and stands are left for manual
 construction. Existing Sepang variants are preserved.
 
 **10,278 parts**, about **3,516 × 6,694 studs**, with **40–42-stud roads** and a
 **32-stud pit lane**. Track elevation varies by about 68.7 studs.
+
+The Jakarta migration preserves every track part and its elevation. It updates
+the runtime's target map, server-count checks and checkpoints. The exported
+Jakarta client uses the same catalog and placement payload as Jawa Timur.
+You confirmed that Jakarta saves builds above 10,000 objects. Its server-side
+save handler was not exported, so the exact maximum is still unknown.
+The 11,000-object guard is a local builder setting. If the exact save limit is known, set
+`_G.MonzaBuilder.Config.SaveObjectLimit` before building; the guard includes
+other placed objects reported by the server.
 
 Uses the accepted Sepang scale (2.68845 studs/metre), road-width multiplier 1.25
 and pit-width multiplier 1.4, with a 40-stud road-width minimum. The pit lane is
@@ -22,7 +31,7 @@ preview of your existing grass, not additional placed parts.
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/loader.lua"))()
 ```
 
-Enable the game's build tools. Stand on the grass where you want the pit
+Join Jakarta and enable the game's build tools. Stand on the grass where you want the pit
 straight to be, inspect the catalog, preview, then Build. This script opens the
 panel without placing parts. The standing point fixes horizontal pit position;
 the elevated pit road is about 16 studs above that grass at the default anchor.
@@ -52,9 +61,13 @@ save the partial build using the game's UI:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/loader.lua"))("checkpoint")
 ```
 
-Restore the saved game build before loading with `"resume"`. Checkpoints are
-specific to the geometry/release. Monza uses `_G.MonzaBuilder` and
-`monza-elevated-checkpoint.json`, separately from both Sepang variants.
+Restore the saved Jakarta game build before loading with `"resume"`. Checkpoints
+are specific to the geometry, map and release. Monza uses `_G.MonzaBuilder` and
+`monza-jakarta-checkpoint.json`, separately from both Sepang variants and the old
+Jawa Timur Monza checkpoint. Start a fresh build in Jakarta; a Jawa Timur
+checkpoint cannot restore the objects stored in Jakarta's separate save slots.
+The original Jawa Timur release remains available at
+`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/7a70765183a5d1624b7e/loader.lua`.
 
 ## Local executor package
 
@@ -78,6 +91,9 @@ It is not used as a complete 2026 track reconstruction. This is a GLB-based
 adaptation, not survey geometry. Rectangular pieces retain small overlaps and
 angular perimeter edges. Offline geometry and mocked runtime checks cannot
 establish actual vehicle handling or the live server's acceptance of the build.
+The Jakarta client-contract evidence and its source hashes are recorded in
+`source/jakarta-target.json`. Live Others75 availability, Plus access and saving
+the full build still need verification in Jakarta.
 
 ## Generate and validate
 

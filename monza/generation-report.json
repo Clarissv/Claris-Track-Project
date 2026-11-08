@@ -1,6 +1,11 @@
 {
   "format": "monza-elevated-v1",
   "variant": "elevated",
+  "gameTarget": {
+    "name": "Jakarta",
+    "placeId": 14005966837,
+    "saveObjectLimit": null
+  },
   "scope": "F1 circuit, pit lane, low smooth kerbs, markings, tidied astroturf and gravel; buildings and stands excluded",
   "settings": {
     "maxParts": 11000,

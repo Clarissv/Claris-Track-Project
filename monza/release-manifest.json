@@ -1,6 +1,6 @@
 {
   "format": "monza-github-release-v1",
-  "version": "7a70765183a5d1624b7e",
+  "version": "4447cb8412ac63b3a4d0",
   "partCount": 10278,
   "footprint": [
     3516.4804,
@@ -8,29 +8,29 @@
   ],
   "files": [
     {
-      "path": "releases/7a70765183a5d1624b7e/monza-builder.lua",
-      "bytes": 40495,
-      "sha256": "fc59f79bc18e7525d74efd0ffda3535ccb9f2668b66b4d53ed855bb8869ebc3f"
+      "path": "releases/4447cb8412ac63b3a4d0/monza-builder.lua",
+      "bytes": 41792,
+      "sha256": "2edaa44d1825854c45e452cbb625013429ccf6de795772900e22a23245ace908"
     },
     {
-      "path": "releases/7a70765183a5d1624b7e/runtime-plan.json",
-      "bytes": 977753,
-      "sha256": "60f8f227e43f8e00a66c8f587267ec9d11edbd788cd9262c36405d07dabb2be1"
+      "path": "releases/4447cb8412ac63b3a4d0/runtime-plan.json",
+      "bytes": 977830,
+      "sha256": "e1786a7a7779188696f0ff6bd0ed4620e90f374d9111179cd5f632a18d04ebd8"
     },
     {
-      "path": "releases/7a70765183a5d1624b7e/monza-checkpoint.lua",
-      "bytes": 3158,
-      "sha256": "1b3d24413e3b7464f114de75239151e77c824ae43c120fc405ff9d5bb092ead0"
+      "path": "releases/4447cb8412ac63b3a4d0/monza-checkpoint.lua",
+      "bytes": 3353,
+      "sha256": "8a30091a0a042d10442ac6314bb3371ec5426ad5dfca9a30edb6f0a520dfd8ff"
     },
     {
-      "path": "releases/7a70765183a5d1624b7e/monza-diagnose.lua",
-      "bytes": 3681,
-      "sha256": "869c0684fe4a5fe516a2763c90d35add5601973b48de359247d43a63c5dc7e85"
+      "path": "releases/4447cb8412ac63b3a4d0/monza-diagnose.lua",
+      "bytes": 3817,
+      "sha256": "eb9b0d5981eeb1c43710b772c78a9d51ccf46ff488a7137ad91ba2611675f9f4"
     },
     {
-      "path": "releases/7a70765183a5d1624b7e/loader.lua",
-      "bytes": 1684,
-      "sha256": "b9264009deedf04e069ae4248ddcc4e0025af463f1d676e5aea952e9832f5b10"
+      "path": "releases/4447cb8412ac63b3a4d0/loader.lua",
+      "bytes": 1689,
+      "sha256": "8ec9f5c39d881c258aca7d850a7525c40da6ba19f5c5b7e1df8743640784d97c"
     }
   ]
 }

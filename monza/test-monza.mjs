@@ -13,6 +13,7 @@ function inside(part,q,tolerance=.001){const basis=boxBasis(part),delta=sub(q,pa
 const roadAt=Array(reference.points.length);for(const span of plan.meta.roadSegments)for(let i=span.start;i<=span.end;i++)roadAt[i]=span.index;
 test('part budget, dimensions, orientation and separate Monza runtime',()=>{
   assert.equal(plan.meta.format,'monza-elevated-v1');assert(plan.parts.length<=11000);assert.equal(plan.meta.partCount,plan.parts.length);
+  assert.deepEqual(plan.meta.gameTarget,{name:'Jakarta',placeId:14005966837,saveObjectLimit:null});
   for(const p of plan.parts){assert.equal(p.length,13);assert(p.every(Number.isFinite));assert(p.slice(3,6).every(d=>d>=.001&&d<=2048));const b=boxBasis(p);assert(Math.abs(Math.hypot(...b.right)-1)<.0002);assert(Math.abs(Math.hypot(...b.up)-1)<.0002);assert(Math.abs(dot(b.right,b.up))<.0002);assert(b.up[1]>.98);assert(plan.meta.palette[p[6]-1]);}
   const builder=fs.readFileSync(path.join(here,'monza-builder.lua'),'utf8');assert(builder.includes('_G.MonzaBuilder = api'));assert(!builder.includes('_G.SepangBuilder ='));assert(!builder.includes('_G.SepangFlatBuilder ='));assert(builder.includes('FollowBuild = true'));assert(builder.includes('No automatic retry'));
 });
@@ -66,5 +67,6 @@ test('immutable GitHub release has matching files and runtime geometry',()=>{
   const manifest=read('release-manifest.json');assert.equal(manifest.partCount,plan.parts.length);
   for(const f of manifest.files){const bytes=fs.readFileSync(path.join(here,f.path));assert.equal(bytes.length,f.bytes);assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),f.sha256);}
   const runtime=read(`releases/${manifest.version}/runtime-plan.json`);assert.deepEqual(runtime.parts,plan.parts);assert.deepEqual(runtime.meta.catalogRoles,plan.meta.catalogRoles);
-  const loader=fs.readFileSync(path.join(here,'loader.lua'),'utf8');assert(loader.includes(`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/${manifest.version}/`));assert(!loader.includes('/main/flat/'));assert(loader.includes('monza-elevated-checkpoint.json'));
+  assert.deepEqual(runtime.meta.gameTarget,plan.meta.gameTarget);
+  const loader=fs.readFileSync(path.join(here,'loader.lua'),'utf8');assert(loader.includes(`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/${manifest.version}/`));assert(!loader.includes('/main/flat/'));assert(loader.includes('monza-jakarta-checkpoint.json'));
 });
