@@ -1,0 +1,13 @@
+{
+  "name": "monza-elevated-track-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node compile-monza.mjs",
+    "reference": "node reference.mjs",
+    "trace": "node extract-surfaces.mjs",
+    "test": "node --test test-monza.mjs",
+    "test:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File test-builder.ps1 -HttpLoader loader.lua",
+    "publish:prepare": "node prepare-publish.mjs"
+  }
+}

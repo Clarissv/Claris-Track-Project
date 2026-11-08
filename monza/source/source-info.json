@@ -1,0 +1,43 @@
+{
+  "repository": "https://github.com/TUMFTM/racetrack-database",
+  "commit": "e59595d1f3573b30d1ded6a08984935b957688e0",
+  "acquisition": "Extracted from the already downloaded local Git repository; no fresh network request.",
+  "files": [
+    {
+      "file": "Monza.csv",
+      "upstreamPath": "tracks/Monza.csv",
+      "bytes": 39894,
+      "sha256": "4b5993986e67950df1b89efa03a4df02127f07b7213985917f0bad27ad3d48b6"
+    },
+    {
+      "file": "Monza-raceline.csv",
+      "upstreamPath": "racelines/Monza.csv",
+      "bytes": 25799,
+      "sha256": "e1a19955d36cc4088ed500679822c5b16393a0536653fc315a5c3bf2d6f24bfe"
+    },
+    {
+      "file": "Monza-raceline.png",
+      "upstreamPath": "racelines/Monza_raceline.png",
+      "bytes": 153128,
+      "sha256": "b5446a4754a6366f445713f84e9a3bc958fdff95dc72c36449c30d4c454eabbf"
+    },
+    {
+      "file": "Monza-curvature.png",
+      "upstreamPath": "racelines/Monza_curvature.png",
+      "bytes": 130656,
+      "sha256": "b49b933e805c8610ffee90456e39ec7bba933dbbd85d926594043111d0070ede"
+    },
+    {
+      "file": "LICENSE",
+      "upstreamPath": "LICENSE",
+      "bytes": 7652,
+      "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"
+    },
+    {
+      "file": "racetrack-database-README.md",
+      "upstreamPath": "README.md",
+      "bytes": 3231,
+      "sha256": "a19623b908df5b12d1d92288682a52c7f5ae0a3c148a260910b63e41212a7c8d"
+    }
+  ]
+}

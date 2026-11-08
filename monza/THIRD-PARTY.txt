@@ -1,0 +1,17 @@
+Horizontal track data: TUMFTM/racetrack-database
+https://github.com/TUMFTM/racetrack-database
+Commit e59595d1f3573b30d1ded6a08984935b957688e0
+Monza.csv and Monza-raceline.csv, LGPLv3; license in source/LICENSE.
+Exact source hashes and provenance are in source/source-info.json.
+
+Surface reference: user-supplied Autodromo Nazionale Monza.glb
+SHA256 8682943c3876a794d0b418cadb3d1eb5a867e3b9e89d4b1207b0efca308d8ef0
+Contains named Monza driving, pitlane, kerb, astroturf and gravel meshes.
+Original model/texture files are not included in the publishing package.
+The generated reference/plan is an adaptation of that model's geometry.
+
+Monza F1 2026 Extension 8.0, Pyyer: inspected for completeness only.
+Required base monza.kn5 and other referenced track files were absent.
+Extension files and textures are not used or redistributed by this package.
+
+Geometry/runtime helpers were adapted from this workspace's Sepang Flat package.
