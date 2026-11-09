@@ -556,10 +556,194 @@ function api.Pause()
     paused = true
     status("Pausing after the current placement resolves")
 end
+-- Explicit diagnostic saves; all requests use the game's existing slot endpoint.
+local function requestSlotSave(slot,internal)
+local _savingBuilder=internal and api or nil
+-- Jakarta's own BuildSaver request. A numeric argument explicitly chooses the
+-- slot to overwrite. This does not serialize the build locally or bypass saves.
+local function saveSlot(slot)
+    if type(slot) == "string" and slot:match("^[1-4]$") then slot = tonumber(slot) end
+    assert(type(slot) == "number" and slot >= 1 and slot <= 4 and slot % 1 == 0, "Choose a save slot from 1 to 4")
+    assert(game.PlaceId == 14005966837, "Join Jakarta before saving the circuit")
+    local prior = _G.RedBullRingSlotSave
+    assert(not (prior and prior.busy), "A script save request is already running")
+    local storage = game:GetService("ReplicatedStorage")
+    local player = game:GetService("Players").LocalPlayer
+    local shared = assert(storage:FindFirstChild("Shared"), "Jakarta's Shared folder is missing")
+    local owner = assert(shared:FindFirstChild("ServerOwner"), "Jakarta's ServerOwner is missing")
+    assert(owner.Value == player.UserId, "Only Jakarta's server owner can save this build")
+    assert(workspace:FindFirstChild("EditableBuilds"), "Enable build tools and load or build the circuit first")
+    local builders = {_G.RedBullRingClearStartBuilder, _G.RedBullRingBuilder, _G.MonzaBuilder, _G.MonzaTerrainBuilder, _G.SepangBuilder, _G.SepangFlatBuilder}
+    local current = _G.RedBullRingClearStartBuilder or _G.RedBullRingBuilder
+    for _,api in pairs(builders) do
+        assert((api.State ~= "building" or api == _savingBuilder), "Pause the active builder and wait for its current placement before saving")
+    end
+    assert(not current or current.State ~= "unconfirmed", "Reconcile the unconfirmed placement before saving")
+    local container = assert(storage:FindFirstChild("NetworkContainer"), "NetworkContainer is missing")
+    local functions = assert(container:FindFirstChild("RemoteFunctions"), "RemoteFunctions is missing")
+    local events = assert(container:FindFirstChild("RemoteEvents"), "RemoteEvents is missing")
+    local counter = assert(functions:FindFirstChild("BuildSaver"), "BuildSaver count endpoint is missing")
+    local endpoint = assert(events:FindFirstChild("BuildSaver"), "BuildSaver save endpoint is missing")
+    local message = assert(events:FindFirstChild("ChatMessage"), "Jakarta's save notification endpoint is missing")
+    assert(endpoint:IsA("RemoteEvent") and counter:IsA("RemoteFunction"), "Jakarta's save endpoint types changed")
+    local report = {slot=slot,status="checking",busy=true,requestedAt=os.clock(),messages={}}
+    _G.RedBullRingSlotSave = report
+    local cooldown = _G.RedBullRingSaveClock
+    if not cooldown then
+        cooldown = {notBefore=os.clock()+31}
+        _G.RedBullRingSaveClock = cooldown
+    end
+    local connected
+    local ok,reason = pcall(function()
+        if os.clock()<cooldown.notBefore then
+            report.status="cooldown"
+            print(string.format("[Red Bull Ring save] Waiting %.1f seconds for the save cooldown; placement stays paused.",cooldown.notBefore-os.clock()))
+        end
+        while os.clock()<cooldown.notBefore do
+            if _savingBuilder and paused then report.status="cancelled";return end
+            task.wait(math.min(.1,cooldown.notBefore-os.clock()))
+        end
+        if _savingBuilder and paused then report.status="cancelled";return end
+        report.status="checking"
+        assert(owner.Value==player.UserId,"The server owner changed during the save cooldown; no save was sent")
+        local done,countOk,count = false,false,nil
+        task.spawn(function() countOk,count=pcall(function() return counter:InvokeServer("GetPlacedAmount") end);done=true end)
+        local deadline=os.clock()+12
+        repeat task.wait(.05) until done or os.clock()>=deadline
+        assert(done and countOk and type(count)=="number" and count==count and count<math.huge and count%1==0, "The server object count could not be verified; no save was sent")
+        assert(count>=2, "Only grass or an empty build is loaded. Load or rebuild the circuit before saving; no save was sent")
+        report.objectCount=count
+        for _,api in pairs(builders) do
+            assert((api.State ~= "building" or api == _savingBuilder), "The builder became active while checking the save count")
+        end
+        assert(not current or (current.State ~= "unconfirmed" and (current.ExpectedServerCount==nil or current.ExpectedServerCount==count)), "Builder/server count mismatch; run diagnose before saving")
+        local sent=false
+        connected=message.OnClientEvent:Connect(function(text)
+            if not sent or type(text)~="string" then return end
+            local lower=string.lower(text)
+            if not lower:find("sav",1,true) then return end
+            if #report.messages<20 then report.messages[#report.messages+1]=text end
+            if report.status~="requested" then return end
+            if lower:find("failed to save",1,true) then report.status="failed";report.serverMessage=text
+            elseif lower:find("successfully saved",1,true) or lower:find("saved successfully",1,true) then report.status="success";report.serverMessage=text end
+        end)
+        print(string.format("[Red Bull Ring save] Saving %d objects to slot %d. This replaces that slot's old save.",count,slot))
+        report.status="requested";report.sentAt=os.clock();sent=true
+        cooldown.notBefore=report.sentAt+31
+        -- Verified in Jakarta's exported BUILDSLOT Yes.Activated callback.
+        endpoint:FireServer("Save",slot)
+        local deadline=os.clock()+45
+        while report.status=="requested" and os.clock()<deadline do task.wait(.05) end
+        if report.status=="requested" then report.status="unknown";report.serverMessage="No terminal save reply arrived within 45 seconds. Check Jakarta's UI; the request may still be running." end
+        report.elapsedSeconds=os.clock()-report.sentAt
+    end)
+    if connected then connected:Disconnect() end
+    if report.sentAt then cooldown.notBefore=math.max(cooldown.notBefore,os.clock()+31) end
+    report.busy=false
+    if not ok then report.status="error";report.error=tostring(reason);error(reason,0) end
+    print(string.format("[Red Bull Ring save] Slot %d: %s. %s",slot,report.status,tostring(report.serverMessage)))
+    return report
+end
+return saveSlot(slot)
+
+end
+function api.Save(slot)
+assert(not busy,"Pause the builder and wait for its current placement or save")
+return requestSlotSave(slot,false)
+end
+local AUTO_GROUPS = {{"asphalt",1,3181},{"edgeMarkings",3182,4442},{"curbs",4443,5025},{"sand",5026,5232},{"runoff",5233,5901},{"pitLane",5902,6215},{"pitMarkings",6216,6454},{"startFinish",6455,6455},{"terrain",6456,9623}}
+local function saveGroups(first,last)
+    local names={}
+    for _,group in ipairs(AUTO_GROUPS) do
+        if first<=group[3] and last>=group[2] then names[#names+1]=group[1] end
+    end
+    return #names>0 and table.concat(names,", ") or "plan"
+end
+local function nextSaveCount(auto,count)
+    local interval=count>=auto.fineFrom and auto.fineEvery or auto.every
+    local nextCount=(math.floor(count/interval)+1)*interval
+    if count<auto.fineFrom then nextCount=math.min(nextCount,auto.fineFrom) end
+    return nextCount
+end
+function api.EnableAutoSave(slot,options)
+    assert(not busy and not previewing and not pending,"Pause and reconcile the build before enabling autosave")
+    slot=tonumber(slot)
+    assert(slot and slot>=1 and slot<=4 and slot%1==0,"Choose an autosave slot from 1 to 4")
+    options=options or {}
+    local auto={slot=slot,every=options.every or 500,fineFrom=options.fineFrom or 8500,fineEvery=options.fineEvery or 100,
+        status="armed",history={},startedAt=os.clock()}
+    for _,key in ipairs({"every","fineFrom","fineEvery"}) do
+        local value=auto[key]
+        assert(type(value)=="number" and value>=1 and value<math.huge and value%1==0,"Autosave intervals must be positive integers")
+    end
+    local shared=ReplicatedStorage:FindFirstChild("Shared")
+    local owner=shared and shared:FindFirstChild("ServerOwner")
+    assert(owner and owner.Value==player.UserId,"Only Jakarta's server owner can enable autosave")
+    remote("RemoteEvents","BuildSaver","RemoteEvent")
+    remote("RemoteEvents","ChatMessage","RemoteEvent")
+    _G.RedBullRingSaveClock=_G.RedBullRingSaveClock or {notBefore=os.clock()+31}
+    api.AutoSave=auto
+    _G.RedBullRingAutoSave=auto
+    status(string.format("Autosave armed: slot %d; every %d objects, every %d from %d. Inspect / Preview, then Build.",slot,auto.every,auto.fineEvery,auto.fineFrom))
+    return auto
+end
+function api.DisableAutoSave()
+    assert(not busy,"Pause the build and wait for its save request before disabling autosave")
+    if api.AutoSave then api.AutoSave.status="disabled" end
+    api.AutoSave=nil
+end
+function api.AutoSaveReport()
+    local auto=api.AutoSave or _G.RedBullRingAutoSave
+    assert(auto,"No diagnostic autosave run is recorded")
+    for _,entry in ipairs(auto.history) do
+        print(string.format("[Red Bull Ring autosave] %s: %s objects; parts %d-%d (%s). %s",entry.status,
+            tostring(entry.objectCount or entry.expectedObjectCount),entry.firstAddedIndex,entry.lastAddedIndex,entry.groups,tostring(entry.serverMessage or entry.error or "")))
+    end
+    if auto.lastSuccess then print("[Red Bull Ring autosave] Last successful count: "..auto.lastSuccess.objectCount) end
+    return auto
+end
+local function autosaveCheckpoint()
+    local auto=api.AutoSave
+    if not auto or paused then return end
+    local confirmed=api.NextIndex-1
+    if confirmed<1 then return end
+    auto.nextObjectCount=auto.nextObjectCount or nextSaveCount(auto,api.ExpectedServerCount)
+    if api.ExpectedServerCount<auto.nextObjectCount and api.NextIndex<=#PLAN then return end
+    if auto.lastSuccess and auto.lastSuccess.confirmedPlanParts==confirmed then return end
+    local first=auto.lastSuccess and auto.lastSuccess.confirmedPlanParts+1 or 1
+    api.Phase="saving"
+    auto.status="saving"
+    status(string.format("Autosave: %d objects to slot %d; placement paused for cooldown and reply",api.ExpectedServerCount,auto.slot))
+    local ok,result=pcall(requestSlotSave,auto.slot,true)
+    if not ok then
+        result={slot=auto.slot,status="error",error=tostring(result)}
+    end
+    result.confirmedPlanParts=confirmed
+    result.expectedObjectCount=api.ExpectedServerCount
+    result.firstAddedIndex,result.lastAddedIndex=first,confirmed
+    result.groups=saveGroups(first,confirmed)
+    auto.history[#auto.history+1]=result
+    auto.status=result.status
+    if result.status=="success" then
+        auto.lastSuccess=result
+        auto.nextObjectCount=nextSaveCount(auto,api.ExpectedServerCount)
+        status(string.format("Saved %d objects; parts %d-%d (%s). Continuing.",result.objectCount,first,confirmed,result.groups))
+    elseif result.status~="cancelled" then
+        auto.firstFailure=auto.firstFailure or result
+        paused=true
+        auto.stopMessage=string.format("SAVE %s at %d objects. Last success: %s. Added parts %d-%d (%s). Placement stopped; inspect the save report.",
+            result.status,api.ExpectedServerCount,auto.lastSuccess and tostring(auto.lastSuccess.objectCount) or "none",first,confirmed,result.groups)
+        status(auto.stopMessage)
+    end
+    api.Phase="building"
+end
+
 function api.Build()
+    assert(not (_G.RedBullRingSlotSave and _G.RedBullRingSlotSave.busy), "Wait for the current slot save before building")
+    assert(not (api.AutoSave and api.AutoSave.firstFailure), "Autosave stopped at a failed or unknown save. Inspect AutoSaveReport before explicitly disabling or re-arming it")
     assert(not ((_G.SepangBuilder and _G.SepangBuilder.State == "building") or (_G.SepangFlatBuilder and _G.SepangFlatBuilder.State == "building")), "Pause the Sepang builder before building Red Bull Ring")
     assert(not busy and not previewing, "Wait for the preview to finish; only one build can run")
-    if api.NextIndex > #PLAN then
+    if api.NextIndex > #PLAN and not (api.AutoSave and (not api.AutoSave.lastSuccess or api.AutoSave.lastSuccess.confirmedPlanParts < #PLAN)) then
         local report = api.VerifyServerCount()
         assert(report.matches, "Server object count changed after completion; run diagnose before saving")
         status("Build already complete; server count verified: " .. report.serverCount)
@@ -594,6 +778,7 @@ function api.Build()
     local currentCount = queryServerCount()
     assert(not api.ExpectedServerCount or currentCount == api.ExpectedServerCount, "Server object count changed since the previous pause; run diagnose before resuming")
     api.ExpectedServerCount = currentCount
+    if api.AutoSave then api.AutoSave.nextObjectCount = api.AutoSave.nextObjectCount or nextSaveCount(api.AutoSave,currentCount) end
     local remainingCount = #PLAN - api.NextIndex + 1
     if restoredCheckpoint then
         assert(currentCount >= api.NextIndex - 1, "Load your saved partial build before resuming this checkpoint")
@@ -634,6 +819,7 @@ function api.Build()
     local connection, streamConnection
     local ok, reason = pcall(function()
         streamConnection = folder.ChildAdded:Connect(indexObject)
+        autosaveCheckpoint()
         while api.NextIndex <= #PLAN and not paused do
             local index = api.NextIndex
             local request = makeRequest(index, origin, buildScale, appearance)
@@ -692,7 +878,8 @@ function api.Build()
                 local remaining = CONFIG.PlacementInterval - (os.clock() - started)
                 if remaining > 0 then task.wait(remaining) end
             end
-            if index == 1 or index % 25 == 0 then status(string.format("Confirmed %d / %d parts", index, #PLAN)) end
+            autosaveCheckpoint()
+            if not paused and (index == 1 or index % 25 == 0) then status(string.format("Confirmed %d / %d parts", index, #PLAN)) end
         end
         -- Compare with the same authoritative count used by the game's save UI.
         -- Streaming changes the local folder count, so it cannot establish this.
@@ -709,9 +896,12 @@ function api.Build()
     releaseFollower()
     busy = false
     api.State = not ok and "unconfirmed" or (api.NextIndex > #PLAN and "complete" or "paused")
+    if ok and api.AutoSave and api.AutoSave.firstFailure then api.State = "save_" .. api.AutoSave.firstFailure.status end
+    if ok and api.AutoSave and api.AutoSave.status == "cancelled" then api.State = "paused" end
     api.Phase = api.State
     if not ok then error(reason, 0) end
-    status(api.State == "complete" and string.format("Complete: %d track parts; %d server objects verified. Save through the game's build-slot UI.", #PLAN, api.ServerCount) or string.format("Paused at %d / %d; server objects=%d; Build / Resume continues", api.NextIndex - 1, #PLAN, api.ServerCount))
+    if api.AutoSave and api.AutoSave.firstFailure then status(api.AutoSave.stopMessage); return api.AutoSave end
+    status(api.State == "complete" and string.format("Complete: %d track parts; %d server objects verified. %s", #PLAN, api.ServerCount, api.AutoSave and "Autosave confirmed." or "Save through the game's build-slot UI.") or string.format("Paused at %d / %d; server objects=%d; Build / Resume continues", api.NextIndex - 1, #PLAN, api.ServerCount))
 end
 function api.Repair()
     assert(not busy and not previewing, "Pause the build before repairing")

@@ -1,7 +1,13 @@
 -- Elevated Red Bull Ring circuit loader for Jakarta. Opens the builder panel; preview before building.
-local mode = ...
-assert(mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose", "Red Bull Ring: expected build, resume, checkpoint or diagnose")
-local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/releases/53f78d54f4b9a465d63b/"
+local mode,slot = ...
+if mode == "autosave" then
+    slot=tonumber(slot)
+    assert(slot and slot>=1 and slot<=4 and slot%1==0,"Choose an autosave slot from 1 to 4")
+end
+local isSlot = type(mode) == "number" or type(mode) == "string" and mode:match("^[1-4]$")
+if isSlot then mode = tonumber(mode); assert(mode and mode >= 1 and mode <= 4 and mode % 1 == 0, "Choose a save slot from 1 to 4") end
+assert(isSlot or mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose" or mode == "autosave", "Red Bull Ring: expected build, resume, checkpoint, diagnose, autosave or a save slot from 1 to 4")
+local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/releases/d3e981f5d1ece8f922ae/"
 local CHECKPOINT = "red-bull-ring-clear-start-jakarta-checkpoint.json"
 local function download(name)
     local url = BASE .. name
@@ -21,6 +27,7 @@ local function compile(name)
     assert(type(fn) == "function", "Red Bull Ring: cannot compile " .. name .. ": " .. tostring(err))
     return fn
 end
+if isSlot then return compile("red-bull-ring-save.lua")(mode) end
 if mode == "diagnose" then return compile("red-bull-ring-diagnose.lua")() end
 if mode == "checkpoint" then
     assert(_G.RedBullRingClearStartBuilder, "Red Bull Ring: keep the current builder loaded to save a checkpoint")
@@ -29,4 +36,6 @@ end
 print("[Red Bull Ring] Loading the Jakarta circuit builder and track data from GitHub...")
 local run = compile("red-bull-ring-builder.lua")
 local plan = download("runtime-plan.json")
-return run(nil, plan, mode == "resume" and "resume" or nil, CHECKPOINT)
+local api=run(nil, plan, mode == "resume" and "resume" or nil, CHECKPOINT)
+if mode == "autosave" then api.EnableAutoSave(slot) end
+return api

@@ -34,6 +34,12 @@ try {
     $fixture = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-builder.lua')).Replace('-- RED_BULL_RING_SCRIPT', $source)
     $fixture = $fixture.Replace('-- RED_BULL_RING_DIAGNOSTIC', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-diagnose.lua')))
     $fixture = $fixture.Replace('-- RED_BULL_RING_CHECKPOINT', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-checkpoint.lua')))
+    $saveTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-save.lua')).Replace('-- SAVE_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-save.lua')))
+    $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $saveTests + "
+-- HTTP_LOADER_TESTS")
+    $autoTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-autosave.lua'))
+    $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $autoTests + "
+-- HTTP_LOADER_TESTS")
     if ($HttpLoader) {
         $httpTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-http-loader.lua'))
         $httpTests = $httpTests.Replace('-- HTTP_LOADER_SOURCE', [IO.File]::ReadAllText((Resolve-Path -LiteralPath $HttpLoader).Path))

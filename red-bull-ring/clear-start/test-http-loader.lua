@@ -9,6 +9,7 @@ function game:HttpGet(url)
     if url:match("/red%-bull%-ring%-builder%.lua$") then return string.dump(loadBuilder) end
     if url:match("/red%-bull%-ring%-checkpoint%.lua$") then return string.dump(checkpointBuilder) end
     if url:match("/red%-bull%-ring%-diagnose%.lua$") then return string.dump(diagnoseBuilder) end
+    if url:match("/red%-bull%-ring%-save%.lua$") then return string.dump(saveSlotHelper) end
     if url:match("/runtime%-plan%.json$") then return badPlan and "bad-json" or "fixture-json" end
     error("Unexpected GitHub URL")
 end
@@ -48,3 +49,36 @@ ok = pcall(loadHttpLoader)
 task.spawn = originalSpawn
 assert(not ok and #waiting == 1 and os.clock()-started < 60.1 and _G.RedBullRingClearStartBuilder == api, "A stalled HTTP fetch must time out without replacing the builder")
 print("PASS: GitHub loader without local files, checkpoint/resume, failed downloads and invalid modes")
+
+-- Numeric save mode fetches only the helper and leaves the loaded builder alone.
+api=fresh();api.Build()
+saveCalls={}
+reply="Failed to save";notifyUI=false;fireError=false
+local existingApi=_G.RedBullRingClearStartBuilder
+for slot=1,4 do
+    local beforeHttp,beforePlacement,beforeSaves=#httpCalls,#calls,#saveCalls
+    local result=loadHttpLoader(slot)
+    assert(result.slot==slot and result.status=="failed" and #saveCalls==beforeSaves+1,"Numeric save mode must choose the requested slot and keep the failure reply")
+    assert(#httpCalls==beforeHttp+1 and #calls==beforePlacement and _G.RedBullRingClearStartBuilder==existingApi,"Save mode must fetch only its helper and preserve the existing builder")
+end
+local beforeHttp=#httpCalls
+assert(not pcall(loadHttpLoader,0) and not pcall(loadHttpLoader,5) and not pcall(loadHttpLoader,1.5) and #httpCalls==beforeHttp,"Invalid slot numbers must fail before download")
+local beforePlacement=#calls
+local direct=api.Save(4)
+assert(direct.slot==4 and direct.status=="failed" and #calls==beforePlacement,"The builder Save method must use the same slot helper")
+_G.RedBullRingClearStartBuilder=nil
+local afterRejoin=loadHttpLoader(1)
+assert(afterRejoin.status=="failed" and _G.RedBullRingClearStartBuilder==nil,"Saving a loaded circuit must work without recreating the builder")
+_G.RedBullRingClearStartBuilder=existingApi
+print("PASS: numeric loadstring slots 1-4, helper-only download, invalid slots, direct Save method and post-rejoin save")
+
+api=fresh()
+local beforeHttp=#httpCalls
+assert(not pcall(loadHttpLoader,"autosave") and not pcall(loadHttpLoader,"autosave",5) and #httpCalls==beforeHttp,"Autosave requires a valid explicit slot before download")
+api=loadHttpLoader("autosave",3)
+assert(api==_G.RedBullRingClearStartBuilder and api.AutoSave.slot==3 and api.AutoSave.every==500 and api.AutoSave.fineFrom==8500 and api.AutoSave.fineEvery==100 and #calls==0,"Autosave mode must arm the requested slot without building")
+local beforeSaves=#saveCalls
+reply="Your buildings were successfully saved"
+api.Build()
+assert(api.State=="complete" and #saveCalls==beforeSaves+1 and saveCalls[#saveCalls][2]==3,"Autosave mode must save the completed small build to the selected slot")
+print("PASS: explicit autosave loadstring, slot validation, defaults and final automatic save")
