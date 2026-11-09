@@ -1,6 +1,6 @@
 param([string]$LuaLibrary = 'C:\Program Files\VideoLAN\VLC\plugins\lua\liblua_plugin.dll')
 $ErrorActionPreference = 'Stop'
-foreach ($mapDirectory in @('sepang','sepang\flat','monza','monza\terrain')) {
+foreach ($mapDirectory in @('sepang','sepang\flat','monza','monza\terrain','red-bull-ring')) {
     $directory = Join-Path $PSScriptRoot $mapDirectory
     Push-Location -LiteralPath $directory
     try {

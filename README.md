@@ -11,6 +11,8 @@ monza/
   loader.lua          Elevated Monza
   terrain/            Monza with terrain
   save-debug/         Read-only Jakarta save diagnostics
+red-bull-ring/
+  loader.lua          Elevated Red Bull Ring with terrain
 ```
 
 | Circuit version | Planned parts | Instructions |
@@ -19,6 +21,7 @@ monza/
 | Flat Sepang | 9,044 | [Flat Sepang](sepang/flat/README.md) |
 | Elevated Monza | 10,047 | [Monza](monza/README.md) |
 | Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
+| Red Bull Ring with terrain | 4,886 | [Red Bull Ring](red-bull-ring/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint
@@ -52,6 +55,12 @@ Monza with terrain:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/terrain/loader.lua"))()
 ```
 
+Red Bull Ring with terrain:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/loader.lua"))()
+```
+
 Use the circuit's normal build tools, stand outside your vehicle on the grass,
 inspect the catalog and preview before building. See the variant's README for
 its supported checkpoint, resume and diagnostic modes. Old loadstrings with
@@ -60,7 +69,7 @@ the previous directory paths must be replaced with the URLs above.
 ## Checks and maintenance
 
 From the repository root, run `npm test` for geometry, release hashes and
-repository layout checks. Run `npm run test:lua` for all four builders and their
+repository layout checks. Run `npm run test:lua` for all five builders and their
 HTTP loaders using the existing VLC Lua library, or pass `-LuaLibrary` to
 `test-loaders.ps1`.
 
@@ -71,19 +80,16 @@ Generating terrain consumes the non-terrain Monza files and leaves its build
 data unchanged. Original GLB assets are excluded from Git; the frozen source
 data and attribution remain inside each map.
 
-## Complete the GitHub rename
+## Publish prepared changes
 
-The prepared local checkout is still named `Sepang Publish`. On GitHub, open
-[the repository settings](https://github.com/Clarissv/Sepang/settings), change
-the repository name to **Claris-Track-Project**, then run in this checkout:
+The local checkout is `Claris Track Project`, with origin pointing to
+[Claris-Track-Project](https://github.com/Clarissv/Claris-Track-Project).
+After preparing changes, run from that checkout:
 
 ```powershell
-git remote set-url origin https://github.com/Clarissv/Claris-Track-Project.git
 git add -A
-git commit -m "Organize Claris Track Project by circuit"
+git commit -m "Add Red Bull Ring with elevation, terrain and cleaner road joints"
 git push origin main
 ```
 
-GitHub repository names cannot contain spaces. The display title is
-**Claris Track Project**. The new raw URLs become usable after the rename and
-this directory migration are pushed.
+The new Red Bull Ring raw URL becomes available after its files are pushed.

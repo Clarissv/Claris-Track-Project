@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test-project.mjs sepang/test-ribbons.mjs sepang/test-github-release.mjs sepang/flat/test-flat.mjs monza/test-monza.mjs monza/terrain/test-terrain.mjs",
+    "test": "node --test test-project.mjs sepang/test-ribbons.mjs sepang/test-github-release.mjs sepang/flat/test-flat.mjs monza/test-monza.mjs monza/terrain/test-terrain.mjs red-bull-ring/test-geometry.mjs",
     "test:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File test-loaders.ps1"
   }
 }

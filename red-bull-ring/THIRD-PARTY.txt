@@ -1,0 +1,15 @@
+Horizontal route and widths: TUMFTM/racetrack-database
+https://github.com/TUMFTM/racetrack-database
+Local database snapshot e59595d1f3573b30d1ded6a08984935b957688e0.
+Spielberg.csv is LGPLv3; license is provided in source/LICENSE.
+
+Elevation, ground, pit and surface reference: user-supplied redbullring.glb.
+SHA256 4eefb175d9d3644549c781c96f0ecdb4bdd7983b601acc9bf06442bad81a1bde.
+The rbring mesh is used; the presentation Plane is excluded.
+The GLB, original textures and layout archive are excluded from this package.
+Frozen numeric references and generated block geometry are adaptations.
+Original model authorship/license was not supplied with the local GLB.
+
+Geometry and runtime helpers are adapted from this project's Monza and Sepang
+Jakarta implementations. The raw game client export is not redistributed.
+This circuit uses the same tested Jakarta placement contract, place 14005966837.

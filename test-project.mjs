@@ -5,11 +5,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url));
-const maps=['sepang','sepang/flat','monza','monza/terrain'];
+const maps=['sepang','sepang/flat','monza','monza/terrain','red-bull-ring'];
 
 test('the project has one top-level directory for each circuit',()=>{
   const dirs=fs.readdirSync(root,{withFileTypes:true}).filter(x=>x.isDirectory()&&!x.name.startsWith('.')&&x.name!=='node_modules').map(x=>x.name).sort();
-  assert.deepEqual(dirs,['monza','sepang']);
+  assert.deepEqual(dirs,['monza','red-bull-ring','sepang']);
   assert(fs.existsSync(path.join(root,'monza/save-debug/observe.lua')));
 });
 

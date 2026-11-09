@@ -1,0 +1,34 @@
+import {collisionSampler,inFootprint,overlapVertices,topHeight} from './surface-audit.mjs';
+import {boxCorners} from './geometry.mjs';
+
+export function auditDriving(plan){
+  const groups=plan.meta.groups,visual=new Set(plan.meta.nonCollidingPartIndices);
+  const roadIndices=[...groups.asphalt,...groups.pitLane],roads=roadIndices.map(i=>plan.parts[i]);
+  const roadSurface=collisionSampler(roads),allSurface=collisionSampler(plan.parts.filter((_,i)=>!visual.has(i)));
+  let samples=0,uncovered=0,maxLayerRise=0,worst=null;
+  for(const [kind,line] of [['main',plan.centerline],['pit',plan.meta.pitPoints.map(p=>[...p.pos,p.wr,p.wl])]]){
+    for(let i=0;i<line.length-1;i++){
+      const a=line[i],b=line[i+1],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz),count=Math.max(1,Math.ceil(length/.5));
+      for(let j=0;j<count;j++){
+        const t=j/count,p=a.map((v,k)=>v+(b[k]-v)*t);
+        for(const f of [-.98,-.9,-.6,0,.6,.9,.98]){
+          const offset=f*(f>0?p[3]:p[4]),x=p[0]+dz/length*offset,z=p[2]-dx/length*offset,h=roadSurface(x,z);samples++;
+          if(!Number.isFinite(h)){uncovered++;continue;}
+          const rise=allSurface(x,z)-h;if(rise>maxLayerRise){maxLayerRise=rise;worst={kind,index:i,f,x,z,h};}
+        }
+      }
+    }
+  }
+  // Check all road-road overlaps, including non-neighbours and pit crossings.
+  const cells=new Map(),cell=64;let pairs=0,maxRoadOverlap=0,worstOverlap=null;
+  const keys=p=>{const c=boxCorners(p),xs=c.map(q=>q[0]),zs=c.map(q=>q[2]),r=[];for(let x=Math.floor(Math.min(...xs)/cell);x<=Math.floor(Math.max(...xs)/cell);x++)for(let z=Math.floor(Math.min(...zs)/cell);z<=Math.floor(Math.max(...zs)/cell);z++)r.push(`${x}:${z}`);return r;};
+  for(const [j,p] of roads.entries()){
+    const buckets=keys(p),near=new Set(buckets.flatMap(k=>cells.get(k)??[]));
+    for(const i of near){const a=roads[i],vertices=overlapVertices(a,p);if(!vertices.length)continue;pairs++;
+      for(const [x,z] of vertices){const d=Math.abs(topHeight(a,x,z)-topHeight(p,x,z));if(d>maxRoadOverlap){maxRoadOverlap=d;worstOverlap={parts:[roadIndices[i],roadIndices[j]],x,z};}}
+    }
+    for(const k of buckets){if(!cells.has(k))cells.set(k,[]);cells.get(k).push(j);}
+  }
+  if(worst){worst.layers=[];for(const [group,ids] of Object.entries(groups))if(!['asphalt','pitLane'].includes(group))for(const i of ids)if(!visual.has(i)&&inFootprint(plan.parts[i],[worst.x,worst.z])&&topHeight(plan.parts[i],worst.x,worst.z)>worst.h+.001)worst.layers.push({group,index:i,rise:topHeight(plan.parts[i],worst.x,worst.z)-worst.h});}
+  return {samples,uncovered,maxLayerRiseStuds:maxLayerRise,worst,roadOverlapPairs:pairs,maxRoadOverlapStuds:maxRoadOverlap,worstOverlap};
+}
