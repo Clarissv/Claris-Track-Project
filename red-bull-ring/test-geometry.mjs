@@ -4,13 +4,15 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {boxCorners,boxBasis} from './geometry.mjs';
+import {boxCorners,boxBasis,makeSlab} from './geometry.mjs';
 import {dot} from './track-geometry.mjs';
 import {auditJoins,topHeight} from './surface-audit.mjs';
 import {collisionSampler} from './surface-audit.mjs';
 import {clearanceAudit,volumeAudit,boxesOverlap,constrainSurfaces,solidToDatum} from './bulk-terrain.mjs';
 import {terrainSlab} from './terrain-slab.mjs';
 import {auditDriving,auditPitConnections,auditKerbCoverage} from './audit-driving.mjs';
+import {finishPoints} from './reference.mjs';
+import {fitKerbsToLane} from './track-tidy.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),read=name=>JSON.parse(fs.readFileSync(path.join(here,name)));
 const plan=read('red-bull-ring-plan.json'),terrainStart=plan.meta.terrain.basePartCount;
 const track={parts:plan.parts.slice(0,terrainStart)},grass=plan.parts.slice(terrainStart);
@@ -90,12 +92,35 @@ test('both pit portals have full car-width overlap with the racing asphalt',()=>
 });
 
 test('recovered kerb runs are continuous across their full width',()=>{
-  const report=auditKerbCoverage(plan);assert.deepEqual(report,plan.meta.kerbCoverage);assert(report.samples>30000);assert.equal(report.uncovered,0);assert(report.maxRiseStuds<.14);assert(report.minRiseStuds>-.15);
+  const report=auditKerbCoverage(plan);assert.deepEqual(report,plan.meta.kerbCoverage);assert(report.samples>30000);assert.equal(report.uncovered,0);assert(report.maxRiseStuds<.14);assert(report.minRiseStuds>-.04);
+  assert(report.bodySamples>19000);assert.equal(report.buriedBodySamples,0,JSON.stringify(report));assert(report.minBodyRiseStuds>.01);
   assert.equal(plan.meta.kerbRuns.length,15);
   assert(plan.meta.kerbRuns.some(r=>r.side===1&&r.start<=6172*2&&r.end>=6268*2));
   const altered=structuredClone(plan),hole=6200*2,missing=new Set(plan.meta.kerbSpans.filter(s=>s.side===1&&s.end>=hole&&s.start<=hole+12).map(s=>s.index));
   altered.meta.groups.curbs=altered.meta.groups.curbs.filter(i=>!missing.has(i));
   assert(auditKerbCoverage(altered).uncovered>0,'Removing a stripe must expose a kerb coverage failure');
+});
+
+test('kerb height checks reject continuous strips buried beneath the asphalt',()=>{
+  const old=read('releases/5621c5d15b709af33602/runtime-plan.json'),buried=structuredClone(plan);
+  for(const id of plan.meta.groups.curbs)buried.parts[id]=old.parts[id];
+  const report=auditKerbCoverage(buried);
+  assert.equal(report.uncovered,0,'The previous strips covered the footprint despite being buried');
+  assert(report.buriedBodySamples>1000,'The visible height check must catch the old whole-strip lowering');
+  assert(report.minBodyRiseStuds<-.05);
+  assert.equal(plan.meta.surfaceTidying.kerbSurfaceFit.method,'nominal-lane-overlap');
+});
+
+test('kerb fitting protects an asymmetric lane without burying its raised body',()=>{
+  const lane=[0,20].map(z=>({pos:[0,0,z],wr:14,wl:10,bank:0}));finishPoints(lane,false);
+  // This broad asphalt rectangle also covers the kerb outside the 10-stud
+  // left lane. Only the kerb's small intrusion into that lane needs lowering.
+  const road=makeSlab(lane[0],lane[1],28,0,.5,1,0,0);
+  const line=[0,20].map(z=>({pos:[-11.4,.06,z],wr:1.6,wl:1.6,bank:-.0375}));finishPoints(line,false);
+  const kerb=makeSlab(line[0],line[1],3.2,0,.12,9,0,0),fitted=fitKerbsToLane([road],[kerb],lane);
+  assert.equal(fitted.modified,1);assert(fitted.maximumLowering<.015);
+  assert(topHeight(fitted.parts[0],-9.9,10)<=topHeight(road,-9.9,10));
+  assert(topHeight(fitted.parts[0],-11.4,10)>.045,'The coloured centre must stay above asphalt');
 });
 
 test('four broad runoff aprons replace the marked sand fragments',()=>{

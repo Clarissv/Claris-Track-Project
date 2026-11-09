@@ -2,11 +2,34 @@ import {finishPoints} from './reference.mjs';
 import {adaptiveSegments} from './geometry.mjs';
 import {fittedSlab} from './road-geometry.mjs';
 import {add,mul,sub,unit} from './track-geometry.mjs';
-import {overlapVertices,topHeight,topFootprint} from './surface-audit.mjs';
+import {overlapVertices,topHeight,topFootprint,clipPolygon} from './surface-audit.mjs';
 
-export function fitKerbsBelowRoad(roads,parts){
-  const bounds=p=>{const q=topFootprint(p);return [Math.min(...q.map(v=>v[0])),Math.max(...q.map(v=>v[0])),Math.min(...q.map(v=>v[1])),Math.max(...q.map(v=>v[1]))];},indexed=roads.map(p=>({p,b:bounds(p)}));let modified=0,maximumLowering=0;
-  const result=parts.map(part=>{const p=[...part],a=bounds(p);let lower=0;for(const {p:road,b} of indexed){if(a[0]>b[1]||a[1]<b[0]||a[2]>b[3]||a[3]<b[2])continue;for(const [x,z] of overlapVertices(p,road))lower=Math.max(lower,topHeight(p,x,z)-topHeight(road,x,z)+.002);}if(lower>0){p[1]-=lower+.0002;modified++;maximumLowering=Math.max(maximumLowering,lower);}return p;});
+export function fitKerbsToLane(roads,parts,points){
+  const bounds=q=>[Math.min(...q.map(v=>v[0])),Math.max(...q.map(v=>v[0])),Math.min(...q.map(v=>v[1])),Math.max(...q.map(v=>v[1]))],overlaps=(a,b)=>a[0]<=b[1]&&a[1]>=b[0]&&a[2]<=b[3]&&a[3]>=b[2];
+  const index=entries=>{
+    const cells=new Map(),size=64;
+    for(const entry of entries)for(let x=Math.floor(entry.b[0]/size);x<=Math.floor(entry.b[1]/size);x++)for(let z=Math.floor(entry.b[2]/size);z<=Math.floor(entry.b[3]/size);z++){const key=`${x}:${z}`;if(!cells.has(key))cells.set(key,[]);cells.get(key).push(entry);}
+    return b=>{const near=new Set();for(let x=Math.floor(b[0]/size);x<=Math.floor(b[1]/size);x++)for(let z=Math.floor(b[2]/size);z<=Math.floor(b[3]/size);z++)for(const entry of cells.get(`${x}:${z}`)??[])if(overlaps(b,entry.b))near.add(entry);return [...near];};
+  };
+  const roadIndex=index(roads.map(p=>{const polygon=topFootprint(p);return {p,polygon,b:bounds(polygon)};}));
+  const lanes=points.slice(0,-1).map((a,i)=>{
+    const b=points[i+1],dx=b.pos[0]-a.pos[0],dz=b.pos[2]-a.pos[2],length=Math.hypot(dx,dz),edge=(p,d)=>[p.pos[0]+dz/length*d,p.pos[2]-dx/length*d];
+    // Keep the native left/right widths: a symmetric bounding rectangle can
+    // include the complete kerb when the two road shoulders differ in width.
+    const polygon=[edge(a,-a.wl-.003),edge(a,a.wr+.003),edge(b,b.wr+.003),edge(b,-b.wl-.003)];return {polygon,b:bounds(polygon)};
+  }),laneIndex=index(lanes);
+  let modified=0,maximumLowering=0;
+  const result=parts.map(part=>{
+    const p=[...part],polygon=topFootprint(p),a=bounds(polygon),nearRoads=roadIndex(a);let lower=0;
+    // Protect the full nominal lane, including its edge. Road rectangles can
+    // extend across the entire kerb on inside bends; those spare corners must
+    // not pull the raised, coloured body below the asphalt.
+    for(const lane of laneIndex(a)){
+      const shared=clipPolygon(polygon,lane.polygon);if(!shared.length)continue;
+      for(const road of nearRoads)for(const [x,z] of clipPolygon(shared,road.polygon))lower=Math.max(lower,topHeight(p,x,z)-topHeight(road.p,x,z)+.002);
+    }
+    if(lower>0){p[1]-=lower+.0002;modified++;maximumLowering=Math.max(maximumLowering,lower);}return p;
+  });
   return {parts:result,modified,maximumLowering};
 }
 

@@ -193029,8 +193029,9 @@
       5500
     ],
     "kerbSurfaceFit": {
-      "modified": 583,
-      "maximumLoweringStuds": 0.12630634882002778
+      "method": "nominal-lane-overlap",
+      "modified": 564,
+      "maximumLoweringStuds": 0.038291973450488515
     }
   },
   "surfaceSmoothing": {
@@ -194046,7 +194047,7 @@
         "sourceErrorStuds": 4.422948817350488,
         "loweredStuds": 1.7777233444735572,
         "volumeLoweredStuds": 0,
-        "estimatedMaxGapStuds": 8.662087065587386
+        "estimatedMaxGapStuds": 8.669887065587389
       },
       {
         "index": 88,
@@ -194236,7 +194237,7 @@
         "sourceErrorStuds": 24.106300781171704,
         "loweredStuds": 0,
         "volumeLoweredStuds": 0,
-        "estimatedMaxGapStuds": 25.234090005422793
+        "estimatedMaxGapStuds": 25.303590005422798
       },
       {
         "index": 107,
@@ -194616,7 +194617,7 @@
         "sourceErrorStuds": 16.68391776530396,
         "loweredStuds": 11.388511782832069,
         "volumeLoweredStuds": 0,
-        "estimatedMaxGapStuds": 7.516103481399512
+        "estimatedMaxGapStuds": 7.529103481399517
       },
       {
         "index": 145,
@@ -218991,8 +218992,18 @@
     "uncovered": 0,
     "pitOpenings": 0,
     "worst": null,
-    "maxRiseStuds": 0.1095515897010273,
-    "minRiseStuds": -0.11818448002242121
+    "maxRiseStuds": 0.13271260032610144,
+    "minRiseStuds": -0.033438869352494294,
+    "bodySamples": 19954,
+    "buriedBodySamples": 0,
+    "minBodyRiseStuds": 0.03606065152661131,
+    "worstBody": {
+      "index": 4499,
+      "side": 1,
+      "fraction": 0,
+      "x": 2514.0940806953336,
+      "z": 1558.9100763195263
+    }
   },
   "pitConnections": {
     "entry": {

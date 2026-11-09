@@ -45,6 +45,8 @@ at `releases/56bae26afe425fba3fff/loader.lua`, and the previous 9,128-part
 loader remains at `releases/a26d5cdb3c798f02bae5/loader.lua` for existing builds.
 The corrected 9,120-part pit version remains at
 `releases/28512ec3da8a3bb5d8d0/loader.lua`.
+The preceding 9,629-part surface version remains at
+`releases/5621c5d15b709af33602/loader.lua` for its existing builds.
 
 Checkpoints use `red-bull-ring-jakarta-checkpoint.json`. The loader pins its
 assets under a content-derived release directory. Keep the pinned loader for
@@ -72,8 +74,14 @@ drivable layout.
 The final surface pass recovers 15 continuous kerb runs from dedicated model
 geometry, including the previously sparse stretch between Turns 9 and 10.
 Red/white stripes follow physical distance, with ramps at the ends of each
-run. Kerbs pass 31,248 coverage samples across their width; their fitted
-overlaps stay below the racing asphalt to avoid a lip on the driving lane.
+run. Kerbs pass 31,248 coverage samples across their width. Height fitting
+protects the actual left/right lane edges while keeping the raised red/white
+body above the asphalt. Rectangular road pieces can extend beyond these lane
+edges on bends; their spare corners no longer lower the entire kerb strip.
+A separate height audit checks 19,954 body samples against the road, excluding
+the inner transition and tapered run ends, and rejects buried strips. The
+lowest checked body clearance is 0.036 studs. The full
+driving-corridor collision check still rejects raised layers inside the lane.
 
 Broad runoff aprons now cover Turns 1, 3, 9 and 10. They use the model's
 pavement and overlay footprints with simplified white/grey surfaces. Small
@@ -115,6 +123,8 @@ terrain, or see [the complete preview](build-3d.png),
 [a low-angle terrain view](build-terrain-middle.png),
 [the road joint closeup](build-road-joint.png) and
 [the elevation profile](elevation-profile.svg).
+See [the corrected kerb closeup](build-kerb-height-fix.png) for the inside
+Turn 9 shoulder that was previously buried under an extended road rectangle.
 
 ## Regenerate and check
 

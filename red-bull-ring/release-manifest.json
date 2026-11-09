@@ -1,33 +1,33 @@
 {
   "format": "red-bull-ring-github-release-v1",
-  "version": "5621c5d15b709af33602",
+  "version": "77341c3579ce2b99e464",
   "partCount": 9629,
   "totalWithExistingGrass": 9630,
   "files": [
     {
-      "path": "releases/5621c5d15b709af33602/red-bull-ring-builder.lua",
+      "path": "releases/77341c3579ce2b99e464/red-bull-ring-builder.lua",
       "bytes": 47821,
       "sha256": "29f0051e60501dd9ebf53664329f09b0aa12c626c7fed69bfc02d4882170e108"
     },
     {
-      "path": "releases/5621c5d15b709af33602/runtime-plan.json",
-      "bytes": 1185141,
-      "sha256": "ba1feb0c0ef9788c6f94aa80f61be51fd457d9661b24c59de39e3bc7f3505055"
+      "path": "releases/77341c3579ce2b99e464/runtime-plan.json",
+      "bytes": 1185149,
+      "sha256": "bdd357267cbadbd3543ab2931c7cb384781684cd833db72024c0f87c7ff4eb96"
     },
     {
-      "path": "releases/5621c5d15b709af33602/red-bull-ring-checkpoint.lua",
+      "path": "releases/77341c3579ce2b99e464/red-bull-ring-checkpoint.lua",
       "bytes": 3833,
       "sha256": "8729ca106903e3200d88da88e158cd38d722deca41ba31be2870fb56334365de"
     },
     {
-      "path": "releases/5621c5d15b709af33602/red-bull-ring-diagnose.lua",
+      "path": "releases/77341c3579ce2b99e464/red-bull-ring-diagnose.lua",
       "bytes": 5156,
       "sha256": "7484973eeea32021a87b59dca54ae86cbb256024c8a01b823a220c40251ea939"
     },
     {
-      "path": "releases/5621c5d15b709af33602/loader.lua",
+      "path": "releases/77341c3579ce2b99e464/loader.lua",
       "bytes": 1805,
-      "sha256": "b956cb257f2e6a1675b5385c1de3fa958b551b8ba4a747ba0741d8ec05a469a9"
+      "sha256": "3cc95d119d1f52357922dacc2aa86242b43f731b763f4211f40f688c58875168"
     }
   ]
 }

@@ -1,6 +1,6 @@
 import {scaleReference,scaleGround,densifyDriving} from './layout.mjs';
 import {connectedPitLayout} from './pit-layout.mjs';
-import {addContinuousKerbs,addCornerAprons,fitKerbsBelowRoad} from './track-tidy.mjs';
+import {addContinuousKerbs,addCornerAprons,fitKerbsToLane} from './track-tidy.mjs';
 import {smoothWorldSurface} from './world-surface.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -121,7 +121,7 @@ export function compileTrack(reference,features,ground,options={}){
   const paved={parts:[...groups.asphalt,...groups.pitLane].map(i=>parts[i])},ancillary=[...(groups.runoff??[]),...(groups.sand??[])];
   const runoffFit=constrainSurfaces(paved,ancillary.map(i=>parts[i]),.006,false);
   ancillary.forEach((id,i)=>parts[id]=runoffFit.parts[i]);
-  const curbIds=groups.curbs??[],curbFit=fitKerbsBelowRoad(paved.parts,curbIds.map(i=>parts[i]));
+  const curbIds=groups.curbs??[],curbFit=fitKerbsToLane(paved.parts,curbIds.map(i=>parts[i]),points);
   curbIds.forEach((id,i)=>parts[id]=curbFit.parts[i]);
   const grassHeights=ground.heights.filter(h=>h!==null).sort((a,b)=>a-b),datum=grassHeights[Math.floor(grassHeights.length*.002)]-2;
   for(const p of parts)p[1]=round(p[1]-datum);for(const p of points)p.pos[1]-=datum;for(const p of pit)p.pos[1]-=datum;
@@ -129,7 +129,7 @@ export function compileTrack(reference,features,ground,options={}){
   const anchor=pit[Math.floor(pit.length*.34)].pos;
   const meta={format:'red-bull-ring-elevated-v1',variant:'terrain',name:'Red Bull Ring',gameTarget:{name:'Jakarta',placeId:14005966837,saveObjectLimit:null},scope:'Elevated Spielberg circuit, pit lane, low kerbs, edge lines, gravel and runoff; scenery excluded',partCount:parts.length,palette,planBounds:bounds,width:round(bounds.max[0]-bounds.min[0]),depth:round(bounds.max[2]-bounds.min[2]),sourceSha256:reference.sourceSha256,centerlineSha256:reference.centerlineSha256,referenceSha256:sourceReferenceSha,layoutScale:settings.layoutScale,lapLengthMetres:reference.lapLengthMetres,lapLengthStuds:points.at(-1).s,studsPerMetre:reference.studsPerMetre,pitRoute:features.pitRoute,groundLift:-datum,retainedHeightRange:[Math.min(...points.map(p=>p.pos[1])),Math.max(...points.map(p=>p.pos[1]))],settings,groups,groupCounts:Object.fromEntries(Object.entries(groups).map(([k,v])=>[k,v.length])),roadSegments,edgeMarkingSegments,kerbSpans,kerbRuns,runoffSpans,pitSegments,pitPoints:pit,pitLane:{widthStuds:settings.pitWidth,lengthStuds:pit.at(-1).s},placementAnchor:{name:'pit-entry',position:[anchor[0],0,anchor[2]],roadHeight:anchor[1]},outputScale:2*settings.layoutScale,catalogRoles:[{name:'Others75',appearance:'color',partIndices:[...groups.asphalt,...groups.pitLane],preserveTemplateMaterial:true,color:[65,66,66]}],nonCollidingPartIndices:[...(groups.edgeMarkings??[]),...(groups.pitMarkings??[]),...(groups.startFinish??[])],limitations:['Road pieces are fitted rectangular blocks with small essential overlaps at bends.','The source pit route is smoothed and its connection is adapted to the widened racing road.','Kerbs and runoff use model material/colour cross-sections, with tiny texture fragments merged.','Stored byte/object limits cannot be inferred from the client export.']};
   meta.pitLayout=revisedPit.meta;
-  if(features.tidy)meta.surfaceTidying={kerbRuns:features.tidy.kerbRuns,cornerAprons:aprons.patches,sandKeepRange:features.tidy.sandKeepRange,kerbSurfaceFit:{modified:curbFit.modified,maximumLoweringStuds:curbFit.maximumLowering}};
+  if(features.tidy)meta.surfaceTidying={kerbRuns:features.tidy.kerbRuns,cornerAprons:aprons.patches,sandKeepRange:features.tidy.sandKeepRange,kerbSurfaceFit:{method:'nominal-lane-overlap',modified:curbFit.modified,maximumLoweringStuds:curbFit.maximumLowering}};
   const plan={meta,parts,centerline:points.map(p=>[...p.pos,p.wr,p.wl,p.s,...p.normal])};
   meta.surfaceSmoothing={before:profileMetrics(reference.points),after:profileMetrics(points),worldGradientSmoothing,roadJoins:auditJoins(plan,roadSegments,true),pitJoins:auditJoins(plan,pitSegments,false),roadCount:groups.asphalt.length,medianRoadLengthStuds:groups.asphalt.map(i=>parts[i][5]).sort((a,b)=>a-b)[Math.floor(groups.asphalt.length/2)],overlapGuardStuds:.006};
   if(parts.length>settings.maxParts)throw Error('Track alone exceeds the part budget: '+parts.length);

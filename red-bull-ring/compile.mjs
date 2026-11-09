@@ -12,6 +12,7 @@ if(plan.meta.drivingAudit.uncovered)throw Error('The driving corridor contains g
 if(plan.meta.drivingAudit.maxLayerRiseStuds>.001)throw Error('An added surface obstructs the driving corridor: '+JSON.stringify(plan.meta.drivingAudit));
 plan.meta.kerbCoverage=auditKerbCoverage(plan);
 if(plan.meta.kerbCoverage.uncovered)throw Error('The retained kerb runs contain gaps: '+JSON.stringify(plan.meta.kerbCoverage));
+if(plan.meta.kerbCoverage.buriedBodySamples)throw Error('A raised kerb body is buried beneath the road: '+JSON.stringify(plan.meta.kerbCoverage));
 plan.meta.pitConnections=auditPitConnections(plan);
 if(Object.values(plan.meta.pitConnections).some(end=>end.uncovered||end.maxSurfaceStepStuds>.01))throw Error('The pit entry or exit does not meet the racing surface: '+JSON.stringify(plan.meta.pitConnections));
 fs.writeFileSync(path.join(here,'red-bull-ring-plan.json'),JSON.stringify(plan));

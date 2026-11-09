@@ -51,6 +51,10 @@ export function writeArtifacts(directory,plan) {
   fs.writeFileSync(path.join(directory,'build-3d-detail.png'),render(plan,1400,900,{target:start,span:450*(plan.meta.outputScale??1)}));
   const kerb=plan.meta.kerbRuns.find(run=>run.arc.at(-1)>100&&Math.abs(plan.centerline[run.start][0]-plan.centerline[run.end][0])>20);
   if(kerb){const index=(kerb.start+kerb.end)>>1,p=plan.centerline[index],a=plan.centerline[index-1],b=plan.centerline[index+1],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz),offset=kerb.side*((kerb.side>0?p[3]:p[4])+plan.meta.settings.curbWidth/2);fs.writeFileSync(path.join(directory,'build-kerb-detail.png'),render(plan,1400,900,{target:[p[0]+dz/length*offset,p[1]+.06,p[2]-dx/length*offset],span:140}));}
+  // Close-up of the inside Turn 9 shoulder where the previous whole-strip
+  // fit lowered the kerb by more than its entire raised profile.
+  const index=12156,p=plan.centerline[index],a=plan.centerline[index-1],c=plan.centerline[index+1],dx=c[0]-a[0],dz=c[2]-a[2],length=Math.hypot(dx,dz),offset=-p[4]-plan.meta.settings.curbWidth/2;
+  fs.writeFileSync(path.join(directory,'build-kerb-height-fix.png'),render(plan,1100,800,{top:true,target:[p[0]+dz/length*offset,p[1]+.06,p[2]-dx/length*offset],span:100}));
   if(plan.meta.placementAnchor)fs.writeFileSync(path.join(directory,'build-start-point.png'),render(plan,1400,900,{top:true,target:plan.meta.placementAnchor.position,span:500}));
   if(plan.meta.pitEntry){const a=plan.meta.pitEntry.start,b=plan.meta.pitEntry.join;fs.writeFileSync(path.join(directory,'build-pit-entry.png'),render(plan,1400,800,{top:true,target:[(a[0]+b[0])/2,0,(a[2]+b[2])/2],span:1000}));}
   if(plan.meta.pitPoints){for(const [name,p] of [['entry',plan.meta.pitPoints[0]],['exit',plan.meta.pitPoints.at(-1)]]){const a=name==='exit'&&plan.meta.pitLayout?plan.meta.pitPoints[plan.meta.pitLayout.exitStartIndex].pos:p.pos,target=p.pos.map((v,k)=>(v+a[k])/2);fs.writeFileSync(path.join(directory,`build-pit-${name}.png`),render(plan,1200,900,{top:true,target,span:name==='exit'?750:600}));}}

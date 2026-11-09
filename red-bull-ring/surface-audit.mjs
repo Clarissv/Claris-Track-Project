@@ -26,6 +26,23 @@ export function overlapVertices(a,b) {
   return vertices;
 }
 
+// Clip a convex surface footprint against another convex footprint. This lets
+// kerb fitting distinguish the lane from a rectangular road's spare corners.
+export function clipPolygon(polygon,clip) {
+  const area=clip.reduce((sum,p,i)=>sum+cross(p,clip[(i+1)%clip.length]),0),sign=Math.sign(area);
+  let result=polygon;
+  for(let i=0;i<clip.length&&result.length;i++) {
+    const a=clip[i],edge=sub(clip[(i+1)%clip.length],a),distance=p=>sign*cross(edge,sub(p,a)),next=[];
+    for(let j=0;j<result.length;j++) {
+      const p=result[j],q=result[(j+1)%result.length],dp=distance(p),dq=distance(q);
+      if(dp>=-1e-8)next.push(p);
+      if((dp>=0)!==(dq>=0)){const t=dp/(dp-dq);next.push([p[0]+t*(q[0]-p[0]),p[1]+t*(q[1]-p[1])]);}
+    }
+    result=next;
+  }
+  return result;
+}
+
 // The difference of two top planes is linear, so its largest magnitude
 // across their overlap occurs at a polygon vertex. This also checks extended
 // corners, which testing the nominal shared centreline misses.

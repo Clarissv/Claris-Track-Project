@@ -1,7 +1,7 @@
 -- Elevated Red Bull Ring circuit loader for Jakarta. Opens the builder panel; preview before building.
 local mode = ...
 assert(mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose", "Red Bull Ring: expected build, resume, checkpoint or diagnose")
-local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/releases/5621c5d15b709af33602/"
+local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/releases/77341c3579ce2b99e464/"
 local CHECKPOINT = "red-bull-ring-jakarta-checkpoint.json"
 local function download(name)
     local url = BASE .. name
