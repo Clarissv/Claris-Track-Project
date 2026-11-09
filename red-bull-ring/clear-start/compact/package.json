@@ -1,0 +1,11 @@
+{
+  "name": "red-bull-ring-clear-start-compact",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node compile.mjs",
+    "package": "node prepare-runtime.mjs && node make-package.mjs",
+    "test": "node --test test-compact.mjs",
+    "test:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File test-builder.ps1 -HttpLoader loader.lua"
+  }
+}

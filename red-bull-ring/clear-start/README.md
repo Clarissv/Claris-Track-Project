@@ -82,6 +82,36 @@ The next fresh run can narrow that interval with
 `EnableAutoSave(1, {every=500, fineFrom=9500, fineEvery=10})`.
 Re-arming the stopped 9,600-object build cannot test earlier counts.
 
+The subsequent ten-object checkpoint run saved **9,510** and **9,520** total
+objects, then received the server's **Failed to save** reply at **9,530**.
+The autosave screenshot identifies the failing additions as plan parts
+**9,520–9,529**, all terrain. Those ten parts have finite numeric data,
+valid dimensions, and orthonormal rotation bases; their style is grass.
+This narrows the candidate interval but does not identify one faulty part or
+establish a count/byte limit. The complete clear-start target remains 9,624
+total objects, so completing placement alone will not resolve this save failure.
+
+While that build remains paused, inspect the existing cached slot schema:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/save-debug/inspect-slots.lua"))()
+```
+
+This shared Jakarta helper works with Red Bull Ring too. It reads cached slot
+fields and reports their types and byte lengths without requesting a save or
+load. Send its `SLOT INSPECTION` output. Slot counts and dates are cached
+metadata and do not prove persistence; replicated JSON bytes also need not
+match the server's stored build format. The failed overwrite does not guarantee
+that the previous 9,520-object slot contents survived.
+
+The user's slot inspection confirms Slot3 contains only `BuildAmount` and
+`Date`, totaling 54 replicated JSON bytes; it displays 9,530 despite the failed
+save. No build payload is exposed by this replica, so its size cannot reveal
+the server's actual saved-data size. A separate [compact terrain version](compact/README.md)
+now preserves all road geometry and the starting area while reducing the build
+to **8,937 total objects with grass**. It needs a fresh build and live save/load
+verification; the exact server failure cause remains unproven.
+
 The attempted Repair of that loaded prefix subsequently stopped on multiple
 matching replicated objects and the user's server count became **9,502**.
 Repair can issue a placement before an existing saved object streams into

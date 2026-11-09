@@ -82,12 +82,99 @@
     "Cumulative serialized save size remains a hypothesis; the private server save schema and limits are unknown."
   ],
   "byteCountNote": "numericPlanJsonBytes describes our plan arrays only, not the game save payload.",
-  "nextTest": "Export the original transform with recovery mode for 9499 saved track parts, then rejoin and load exactly 9500 total objects. Resume directly at plan part 9500 with fineFrom=9500 and fineEvery=10, without Repair. Maintain the 31-second shared cooldown and stop at the first failed/unknown save.",
+  "nextTest": "The user selected a separate compact-terrain workaround. Publish clear-start/compact and build fresh with only one grass plate; it contains 8937 total objects. Test saving and reloading the complete compact build in the live game. Existing 9530-object terrain/checkpoints are incompatible with this version.",
   "slotPersistenceNote": "A successful reply at 9500 is a live observation. The subsequent failed write does not guarantee that the slot still contains the 9500-object prefix.",
   "reloadAttempt": {
     "expectedLoadedObjectCount": 9500,
     "reportedObjectCountAfterRepair": 9502,
     "error": "Multiple matching objects; placement ownership is ambiguous",
     "interpretation": "The attempted Repair changed the object count before stopping. Delayed replication/streaming can make an existing saved part appear after Repair has sent a new placement. The exact added object identities were not captured."
+  },
+  "latestReportedLiveResult": {
+    "evidence": "../image copy.png",
+    "kind": "user-provided autosave report screenshot",
+    "successfulCheckpoints": [
+      9510,
+      9520
+    ],
+    "lastSuccessfulObjectCount": 9520,
+    "firstFailedCheckpointObjectCount": 9530,
+    "status": "failed",
+    "serverMessage": "Failed to save",
+    "sessionStillOpen": true,
+    "slot": 3
+  },
+  "latestCandidateInterval": {
+    "firstPlanPart": 9520,
+    "lastPlanPart": 9529,
+    "count": 10,
+    "styles": [
+      "grass"
+    ],
+    "groups": [
+      "terrain"
+    ],
+    "sizeRanges": [
+      [
+        297.9595,
+        301.8193
+      ],
+      [
+        193.2476,
+        204.5065
+      ],
+      [
+        18.9226,
+        29.0994
+      ]
+    ],
+    "upYRange": [
+      0.82879506,
+      0.83944583
+    ],
+    "numericPlanJsonBytes": 1275,
+    "invalidGeometry": []
+  },
+  "latestSlotPersistenceNote": "A successful response at 9520 is confirmed by the screenshot. The subsequent failed overwrite does not guarantee that the previous 9520-object slot contents survived.",
+  "latestSlotInspection": {
+    "evidence": "Red Bull Ring/clear-start/image.png (workspace-relative)",
+    "kind": "user-provided SLOT INSPECTION screenshot",
+    "activeSlot": 3,
+    "slots": [
+      {
+        "slot": 1,
+        "buildAmount": 9625,
+        "replicatedJsonBytes": 54
+      },
+      {
+        "slot": 2,
+        "buildAmount": 1,
+        "replicatedJsonBytes": 51
+      },
+      {
+        "slot": 3,
+        "buildAmount": 9530,
+        "replicatedJsonBytes": 54
+      },
+      {
+        "slot": 4,
+        "buildAmount": 8946,
+        "replicatedJsonBytes": 54
+      }
+    ],
+    "fields": [
+      "BuildAmount",
+      "Date"
+    ],
+    "exposedBuildPayload": false,
+    "conclusion": "Only count/date metadata is replicated. Slot3 metadata updated to 9530 despite a failed save; these bytes do not measure the stored build or establish persistence."
+  },
+  "compactWorkaround": {
+    "path": "compact/",
+    "trackPartsPreserved": 6455,
+    "terrainParts": 2481,
+    "totalWithGrass": 8937,
+    "partsSaved": 687,
+    "livePersistenceVerified": false
   }
 }

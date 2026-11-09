@@ -14,7 +14,7 @@ function sampler(ground){
     return total?sum/total:fallback;
   };
 }
-export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLength=96,margin=384,...options}={}){
+export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLength=96,outerMaxLength=160,outerTolerance=2.5,outerMaxTurn=20,outerWidthVariation=4,margin=384,...options}={}){
   rawGround=scaleGround(rawGround,base.meta.layoutScale??1);
   const ground={...rawGround,trackPlanDatum:base.meta.groundLift,heights:rawGround.heights.map(h=>h===null?null:h+base.meta.groundLift)};
   const bulk=buildTerrain(base,ground,{rootCell,minCell,margin,sourceTolerance:12,maxRoadGap:5,maxSlope:.32,...options}),start=base.parts.length;
@@ -52,7 +52,7 @@ export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLeng
     for(let run of runs){
       finishPoints(run,closed);
       if(!narrow)run=smoothDrivingPoints(run,{heightSigma:120,bankSigma:120,closed});
-      for(const [a,b] of adaptiveSegments(run,narrow?edgeMaxLength:160,narrow?.8:2.5,(narrow?12:20)*Math.PI/180,narrow?.65:2.5,Infinity,4)){
+      for(const [a,b] of adaptiveSegments(run,narrow?edgeMaxLength:outerMaxLength,narrow?.8:outerTolerance,(narrow?12:outerMaxTurn)*Math.PI/180,narrow?.65:outerTolerance,Infinity,narrow?4:outerWidthVariation)){
         spans.push({index:skirts.length,side,inner,outer,start:run[a].sourceIndex,end:run[b].sourceIndex});skirts.push(terrainSlab(run,a,b,{minimumHeight:narrow?-Infinity:.15}));
       }
     }

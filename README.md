@@ -14,6 +14,7 @@ monza/
 red-bull-ring/
   loader.lua          Elevated Red Bull Ring with terrain
   clear-start/        Empty grass starting area beside the pit
+    compact/          Coarser outer terrain, under 9,000 total objects
 ```
 
 | Circuit version | Planned parts | Instructions |
@@ -24,6 +25,7 @@ red-bull-ring/
 | Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
 | Red Bull Ring with terrain (1.5× layout) | 9,629 | [Red Bull Ring](red-bull-ring/README.md) |
 | Red Bull Ring with a clear starting area | 9,623 | [Clear start](red-bull-ring/clear-start/README.md) |
+| Red Bull Ring with compact terrain and a clear starting area | 8,936 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint
@@ -68,10 +70,20 @@ inspect the catalog and preview before building. See the variant's README for
 its supported checkpoint, resume and diagnostic modes. Old loadstrings with
 the previous directory paths must be replaced with the URLs above.
 
+Red Bull Ring with compact terrain, autosaving to slot 3:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/loader.lua"))("autosave", 3)
+```
+
+This version needs a fresh build and contains **8,937 objects including grass**.
+It preserves the road geometry and reduces the outer terrain pieces. See its
+instructions before replacing a saved slot.
+
 ## Checks and maintenance
 
 From the repository root, run `npm test` for geometry, release hashes and
-repository layout checks. Run `npm run test:lua` for all five builders and their
+repository layout checks. Run `npm run test:lua` for all seven builders and their
 HTTP loaders using the existing VLC Lua library, or pass `-LuaLibrary` to
 `test-loaders.ps1`.
 
