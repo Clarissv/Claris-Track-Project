@@ -1,5 +1,8 @@
 node_modules/
 *.zip
-source/*.glb
-sepang-checkpoint.json
-SepangRibbon/
+**/source/*.glb
+**/*checkpoint.json
+**/SepangRibbon/
+**/SepangFlat/
+**/MonzaTrack/
+**/MonzaTerrain/

@@ -47,7 +47,7 @@ preview of your existing grass, not additional placed parts.
 ## Execute after publishing
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/loader.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/loader.lua"))()
 ```
 
 Join Jakarta and enable the game's build tools. Stand on the grass where you want the pit
@@ -87,14 +87,14 @@ completed map through the game's build-slot UI.
 For diagnostics:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/loader.lua"))("diagnose")
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/loader.lua"))("diagnose")
 ```
 
 Before leaving a paused build, export a checkpoint (requires `writefile`) and
 save the partial build using the game's UI:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/loader.lua"))("checkpoint")
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/loader.lua"))("checkpoint")
 ```
 
 Restore the saved Jakarta game build before loading with `"resume"`. Checkpoints
@@ -106,10 +106,10 @@ For the smoothed release, start in an empty Jakarta build slot. Keep the old
 save in another slot: its geometry/checkpoint belongs to the prior release and
 overlaying both versions creates conflicting collision surfaces. The previous
 Jakarta loader is preserved at
-`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/4447cb8412ac63b3a4d0/loader.lua`.
+`https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/releases/4447cb8412ac63b3a4d0/loader.lua`.
 
 The original Jawa Timur release remains available at
-`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/7a70765183a5d1624b7e/loader.lua`.
+`https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/releases/7a70765183a5d1624b7e/loader.lua`.
 
 ## Local executor package
 
@@ -159,6 +159,6 @@ To regenerate source traces from the original GLB, first run
 `node extract-surfaces.mjs`. The texture conversion uses Windows System.Drawing.
 The Lua mock tests use the existing VLC Lua DLL; set `-LuaLibrary` if needed.
 
-`prepare-publish.mjs` copies only the Monza package into `../Sepang Publish/monza`.
-It does not commit or push. Large source assets and AC extension files are not
+`prepare-publish.mjs` packages this Monza directory and refreshes its release.
+Commit and push from the repository root. Large source assets and AC extension files are not
 included in that publishing package. See `THIRD-PARTY.txt` for source attribution.

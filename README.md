@@ -1,43 +1,89 @@
-# Sepang track builder
+# Claris Track Project
 
-For Jawa Timur's normal build tools. This opens the builder panel:
+Roblox circuit builders, organized by map. Each map keeps its variants,
+source data, previews, generators and pinned releases together.
 
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/loader.lua"))()
+```text
+sepang/
+  loader.lua          Elevated Sepang
+  flat/               Flat Sepang
+monza/
+  loader.lua          Elevated Monza
+  terrain/            Monza with terrain
+  save-debug/         Read-only Jakarta save diagnostics
 ```
 
-Stand on your existing grass platform outside your vehicle, inspect the catalog, preview the placement, then click **Build / Resume**. The 2x layout has wider lanes, slopes and smoother rectangular joins: **10,871 parts**, about **3,229 x 2,668 studs**, **46-56-stud roads** and a **22.6-stud pit lane**. Keep the additional Config.Scale at 1. Character follow is enabled; it restores your position on pause/completion/error. Placement takes at least about 18 minutes plus latency and streaming waits.
+| Circuit version | Planned parts | Instructions |
+|---|---:|---|
+| Elevated Sepang | 10,871 | [Sepang](sepang/README.md) |
+| Flat Sepang | 9,044 | [Flat Sepang](sepang/flat/README.md) |
+| Elevated Monza | 10,047 | [Monza](monza/README.md) |
+| Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
 
-The generator and runtime use an **11,000-part budget**. Edge lines follow their own paths and merge into longer pieces, with a tight height tolerance. All asphalt slabs, curbs, runoff, pit lane, pit wall and the start/finish marker are preserved from the 14,815-part version; the road size, width and slopes are unchanged.
+Counts exclude your existing grass plate and other server objects. The
+directory migration preserves track geometry, runtime globals and checkpoint
+names. Existing release IDs remain available inside their map directories.
+Jakarta's save failure is still under investigation; see
+[save diagnostics](monza/save-debug/README.md).
 
-The loader fetches builder and data from one immutable release directory. Starting a build needs no local builder/plan files. The repository's raw files must be accessible without signing in.
+## Load a circuit
 
-## Save and resume this version
-
-Checkpoints must match the exact part plan. This smaller plan starts a fresh build and cannot resume a 14,815-part checkpoint. For that previous version, use `https://raw.githubusercontent.com/Clarissv/Sepang/main/releases/dd0c8269d107e615dbca/loader.lua` instead of the root loader URL below, with `"checkpoint"` or `"resume"` as needed. The old release remains available.
-
-Keep the current builder/server open and execute:
-
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/loader.lua"))("checkpoint")
-```
-
-This saves position/progress to the executor workspace's sepang-checkpoint.json, requests a pause and places/deletes no objects. **Save the partial map using the game's build-slot UI before rejoining.** Load that game save, then execute:
-
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/loader.lua"))("resume")
-```
-
-Inspect and click Build / Resume. The loader also accepts an existing SepangRibbon/sepang-checkpoint.json. It validates the plan checksum, preserves the origin/index and requires the saved partial map. Checkpoints need writefile; resume needs readfile. Unconfirmed sent placements cannot be exported for a fresh retry.
-
-For a diagnostic snapshot:
+Elevated Sepang:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Sepang/main/loader.lua"))("diagnose")
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/sepang/loader.lua"))()
 ```
 
-## Source and checks
+Flat Sepang:
 
-Run npm test for geometry/release checks. npm run test:lua exercises placement and HTTP loading with mocks using an existing VLC Lua DLL on Windows (or supply -LuaLibrary to test-builder.ps1). Live driving/full placement still need verification.
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/sepang/flat/loader.lua"))()
+```
 
-To regenerate geometry, supply your original elevation-reference file as source/sepang.glb (SHA-256 2977de6489c96b52a9e808417609a4203883a374b025637d2e9aefc461ecc6bb), then run npm run generate and npm run release. The GLB/textures are not included. Curbs and pit routing are approximate. CSV source and LGPL license are included under source; see THIRD-PARTY.txt.
+Elevated Monza:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/loader.lua"))()
+```
+
+Monza with terrain:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/terrain/loader.lua"))()
+```
+
+Use the circuit's normal build tools, stand outside your vehicle on the grass,
+inspect the catalog and preview before building. See the variant's README for
+its supported checkpoint, resume and diagnostic modes. Old loadstrings with
+the previous directory paths must be replaced with the URLs above.
+
+## Checks and maintenance
+
+From the repository root, run `npm test` for geometry, release hashes and
+repository layout checks. Run `npm run test:lua` for all four builders and their
+HTTP loaders using the existing VLC Lua library, or pass `-LuaLibrary` to
+`test-loaders.ps1`.
+
+Work inside the appropriate map directory when regenerating. For example,
+`npm --prefix monza run publish:prepare` packages Monza in place, while
+`node monza/terrain/make-package.mjs` packages the separate terrain version.
+Generating terrain consumes the non-terrain Monza files and leaves its build
+data unchanged. Original GLB assets are excluded from Git; the frozen source
+data and attribution remain inside each map.
+
+## Complete the GitHub rename
+
+The prepared local checkout is still named `Sepang Publish`. On GitHub, open
+[the repository settings](https://github.com/Clarissv/Sepang/settings), change
+the repository name to **Claris-Track-Project**, then run in this checkout:
+
+```powershell
+git remote set-url origin https://github.com/Clarissv/Claris-Track-Project.git
+git add -A
+git commit -m "Organize Claris Track Project by circuit"
+git push origin main
+```
+
+GitHub repository names cannot contain spaces. The display title is
+**Claris Track Project**. The new raw URLs become usable after the rename and
+this directory migration are pushed.

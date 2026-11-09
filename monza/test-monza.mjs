@@ -89,7 +89,7 @@ test('immutable GitHub release has matching files and runtime geometry',()=>{
   const runtime=read(`releases/${manifest.version}/runtime-plan.json`);assert.deepEqual(runtime.parts,plan.parts);assert.deepEqual(runtime.meta.catalogRoles,plan.meta.catalogRoles);
   assert.deepEqual(runtime.meta.gameTarget,plan.meta.gameTarget);
   assert.deepEqual(runtime.meta.nonCollidingPartIndices,plan.meta.nonCollidingPartIndices);
-  const loader=fs.readFileSync(path.join(here,'loader.lua'),'utf8');assert(loader.includes(`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/${manifest.version}/`));assert(!loader.includes('/main/flat/'));assert(loader.includes('monza-jakarta-checkpoint.json'));
+  const loader=fs.readFileSync(path.join(here,'loader.lua'),'utf8');assert(loader.includes(`https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/releases/${manifest.version}/`));assert(!loader.includes('/main/sepang/flat/'));assert(loader.includes('monza-jakarta-checkpoint.json'));
 });
 
 test('crest smoothing reduces vertical curvature while preserving hills and the horizontal route',()=>{

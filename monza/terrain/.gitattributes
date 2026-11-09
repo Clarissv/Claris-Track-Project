@@ -1,0 +1,2 @@
+# Keep the release manifest's exact bytes on Windows.
+releases/** -text

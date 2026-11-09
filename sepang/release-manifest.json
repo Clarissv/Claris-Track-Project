@@ -1,0 +1,36 @@
+{
+  "format": "sepang-github-release-v1",
+  "version": "3589d790fb28171cc6f1",
+  "partCount": 10871,
+  "footprint": [
+    3228.5627,
+    2667.7115
+  ],
+  "files": [
+    {
+      "path": "releases/3589d790fb28171cc6f1/sepang-builder.lua",
+      "bytes": 35745,
+      "sha256": "60690d17f573b1494ecac7c7a003cd90b94b0bf8023bc6158e53bb122cb21c60"
+    },
+    {
+      "path": "releases/3589d790fb28171cc6f1/runtime-plan.json",
+      "bytes": 995873,
+      "sha256": "b58cc83447784983e9d0452bdc2fb051092c54eac5108181cf677f0a82c08c3d"
+    },
+    {
+      "path": "releases/3589d790fb28171cc6f1/sepang-checkpoint.lua",
+      "bytes": 2824,
+      "sha256": "40b20f860b66a322812e0ff4c102a3445a09a73f43adb289da58bcffe0e3a663"
+    },
+    {
+      "path": "releases/3589d790fb28171cc6f1/sepang-diagnose.lua",
+      "bytes": 3686,
+      "sha256": "d8ec309c8e7f9f4ddc32774c839c697c072581b13f03f2019eb3cee71495501f"
+    },
+    {
+      "path": "releases/3589d790fb28171cc6f1/loader.lua",
+      "bytes": 1684,
+      "sha256": "004a37468662688fc3b6a60d5ac70938d767abb8ce41f4048e8959b0ff12cff2"
+    }
+  ]
+}

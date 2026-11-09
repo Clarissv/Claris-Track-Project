@@ -3,7 +3,7 @@ local function loadHttpLoader(...)
 end
 local httpCalls, failHttp, badPlan = {}, false, false
 function game:HttpGet(url)
-    assert(url:match("^https://raw%.githubusercontent%.com/Clarissv/Sepang/main/monza/releases/[a-f0-9]+/"), "Wrong GitHub release path")
+    assert(url:match("^https://raw%.githubusercontent%.com/Clarissv/Claris%-Track%-Project/main/monza/releases/[a-f0-9]+/"), "Wrong GitHub release path")
     httpCalls[#httpCalls+1] = url
     if failHttp then error("HTTP unavailable") end
     if url:match("/monza%-builder%.lua$") then return string.dump(loadBuilder) end

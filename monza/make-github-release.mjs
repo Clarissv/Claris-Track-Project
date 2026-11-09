@@ -30,7 +30,7 @@ export function makeRelease(directory) {
     fs.writeFileSync(path.join(release,name),body);
     files.push({path:`releases/${version}/${name}`,bytes:body.length,sha256:crypto.createHash('sha256').update(body).digest('hex')});
   }
-  const base=`https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/${version}/`;
+  const base=`https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/releases/${version}/`;
   const template=fs.readFileSync(path.join(directory,'github-loader-template.luau'),'utf8');
   if(template.split('__RELEASE_BASE__').length!==2)throw Error('Missing release marker');
   const loader=Buffer.from(template.replace('__RELEASE_BASE__',base));

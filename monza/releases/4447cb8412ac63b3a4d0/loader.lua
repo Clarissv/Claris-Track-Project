@@ -1,7 +1,7 @@
 -- Elevated Monza circuit loader for Jakarta. Opens the builder panel; preview before building.
 local mode = ...
 assert(mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose", "Monza: expected build, resume, checkpoint or diagnose")
-local BASE = "https://raw.githubusercontent.com/Clarissv/Sepang/main/monza/releases/4447cb8412ac63b3a4d0/"
+local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/monza/releases/4447cb8412ac63b3a4d0/"
 local CHECKPOINT = "monza-jakarta-checkpoint.json"
 local function download(name)
     local url = BASE .. name

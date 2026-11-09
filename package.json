@@ -1,11 +1,9 @@
 {
-  "name": "sepang-track-builder",
+  "name": "claris-track-project",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test-ribbons.mjs test-github-release.mjs",
-    "test:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File test-builder.ps1 -HttpLoader loader.lua",
-    "generate": "node compile-ribbons.mjs",
-    "release": "node make-github-release.mjs"
+    "test": "node --test test-project.mjs sepang/test-ribbons.mjs sepang/test-github-release.mjs sepang/flat/test-flat.mjs monza/test-monza.mjs monza/terrain/test-terrain.mjs",
+    "test:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File test-loaders.ps1"
   }
 }
