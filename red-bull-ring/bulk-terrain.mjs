@@ -9,11 +9,30 @@ export const topHeight=(p,x,z)=>p[1]+p[4]/(2*p[11])-(p[10]*(x-p[0])+p[12]*(z-p[2
 const key=(x,z)=>`${x}:${z}`;
 const cross2=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
 function projectedHull(part) {
-  const points=boxCorners(part).map(p=>[p[0],p[2]]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  return convexHull(boxCorners(part).map(p=>[p[0],p[2]]));
+}
+function convexHull(input) {
+  const points=[...input].sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
   const lower=[],upper=[];
   for(const p of points){while(lower.length>=2&&cross2(lower.at(-2),lower.at(-1),p)<=1e-10)lower.pop();lower.push(p);}
   for(const p of [...points].reverse()){while(upper.length>=2&&cross2(upper.at(-2),upper.at(-1),p)<=1e-10)upper.pop();upper.push(p);}
   return [...lower.slice(0,-1),...upper.slice(0,-1)];
+}
+function surfaceFaces(part,upper){
+  const corners=boxCorners(part),basis=boxBasis(part),axes=[basis.right,basis.up,basis.back],bits=[1,2,4],faces=[];
+  for(let k=0;k<3;k++){
+    const axis=axes[k];if(Math.abs(axis[1])<1e-8)continue;
+    const sign=axis[1]*(upper?1:-1)>0?1:-1;
+    const polygon=convexHull(corners.filter((_,i)=>Boolean(i&bits[k])===(sign>0)).map(q=>[q[0],q[2]]));
+    faces.push({polygon,height:(x,z)=>part[1]+(sign*part[k+3]/2-axis[0]*(x-part[0])-axis[2]*(z-part[2]))/axis[1]});
+  }
+  return faces;
+}
+export function solidToDatum(part,bottom=0){
+  const p=[...part],basis=boxBasis(p),top=p.slice(0,3).map((v,k)=>v+basis.up[k]*p[4]/2),span=Math.abs(basis.right[1])*p[3]/2+Math.abs(basis.back[1])*p[5]/2;
+  const thickness=Math.max(p[4],(top[1]+span-bottom+.01)/basis.up[1]);
+  for(let k=0;k<3;k++)p[k]=round(top[k]-basis.up[k]*thickness/2);p[4]=round(thickness);
+  if(p[4]>2048)throw Error('A terrain solid exceeds the placement size limit');return p;
 }
 function polygonIntersection(subject,clip) {
   let output=subject;
@@ -100,22 +119,19 @@ function planeTile(x,z,size,height,gx,gz,bottom,color=5) {
   return [...center,width+.04,thickness,depth+.04,color,...right,...up].map((v,i)=>i>=7?Math.round(v*1e8)/1e8:round(v));
 }
 export function constrainSurfaces(base,parts,clearance=.05,belowUnderside=true){
-  const nearby=spatialIndex(base.parts,128,true),hulls=base.parts.map(projectedHull);let modified=0,maximumLowering=0;
+  const nearby=spatialIndex(base.parts,128,true),faces=base.parts.map(p=>surfaceFaces(p,!belowUnderside));let modified=0,maximumLowering=0;
   const result=parts.map(part=>{
-    const p=[...part],hull=projectedHull(p);let lowering=0;
-    for(const i of nearby(p))for(const [x,z] of polygonIntersection(hull,hulls[i])){
-      const b=base.parts[i];lowering=Math.max(lowering,topHeight(p,x,z)-(topHeight(b,x,z)-(belowUnderside?b[4]/b[11]:0)-clearance));
-    }
+    const p=[...part],upper=surfaceFaces(p,true);let lowering=0;
+    for(const i of nearby(p))for(const a of upper)for(const b of faces[i])for(const [x,z] of polygonIntersection(a.polygon,b.polygon))lowering=Math.max(lowering,a.height(x,z)-b.height(x,z)+clearance);
     if(lowering>0){p[1]=round(p[1]-lowering-.002);modified++;maximumLowering=Math.max(maximumLowering,lowering);}
     return p;
   });
   return {parts:result,modified,maximumLowering};
 }
 export function clearanceAudit(base,terrain,clearance=.05) {
-  const nearby=spatialIndex(base.parts);let maxProtrusion=-Infinity,overlaps=0,worst=null;
-  for(const [ti,p] of terrain.entries())for(const i of nearby(p))for(const [x,z] of overlapVertices(p,base.parts[i])) {
-    const b=base.parts[i],difference=topHeight(p,x,z)-(topHeight(b,x,z)-b[4]/b[11]-clearance);
-    overlaps++;if(difference>maxProtrusion){maxProtrusion=difference;worst={terrainIndex:ti,trackIndex:i,x,z};}
+  const nearby=spatialIndex(base.parts,128,true),faces=base.parts.map(p=>surfaceFaces(p,false));let maxProtrusion=-Infinity,overlaps=0,worst=null;
+  for(const [ti,p] of terrain.entries())for(const i of nearby(p))for(const a of surfaceFaces(p,true))for(const b of faces[i])for(const [x,z] of polygonIntersection(a.polygon,b.polygon)){
+    const difference=a.height(x,z)-b.height(x,z)+clearance;overlaps++;if(difference>maxProtrusion){maxProtrusion=difference;worst={terrainIndex:ti,trackIndex:i,x,z};}
   }
   return {clearanceStuds:clearance,overlapVerticesChecked:overlaps,maxProtrusionStuds:maxProtrusion,worst};
 }
@@ -124,7 +140,6 @@ export function buildTerrain(base,ground,options={}) {
   const settings={margin:384,rootCell:512,minCell:128,maxRoadGap:2.5,sourceTolerance:4,clearance:.05,maxSlope:.18,...options};
   const baseBottom=0;
   const nearby=spatialIndex(base.parts),sample=groundSampler(ground,base,baseBottom),roadParts=[...base.meta.groups.asphalt,...base.meta.groups.pitLane].map(i=>base.parts[i]);
-  const volumeNearby=spatialIndex(base.parts,128,true),baseHulls=base.parts.map(projectedHull);
   const occupied=new Set(),roots=new Set();
   // Mark all grid cells in a broad corridor around both main and pit roads.
   for(const p of roadParts) {
@@ -168,14 +183,8 @@ export function buildTerrain(base,ground,options={}) {
       const b=base.parts[i];correction=Math.max(correction,topHeight(part,px,pz)-(topHeight(b,px,pz)-b[4]/b[11]-settings.clearance));
     }
     if(correction>0)part[1]=round(part[1]-correction-.002);
-    // A thick sloping box also projects sideways below its top rectangle.
-    // Constrain its entire projected volume, so those sides cannot enter a
-    // neighbouring road even when its top footprint does not overlap it.
-    const hull=projectedHull(part);let volumeLowering=0;
-    for(const i of volumeNearby(part))for(const [px,pz] of polygonIntersection(hull,baseHulls[i])) {
-      const b=base.parts[i];volumeLowering=Math.max(volumeLowering,topHeight(part,px,pz)-(topHeight(b,px,pz)-b[4]/b[11]-settings.clearance));
-    }
-    if(volumeLowering>0)part[1]=round(part[1]-volumeLowering-.002);
+    // Final visible-face fitting below checks the entire solid exactly.
+    const volumeLowering=0;
     patches.push({index:terrain.length,x0,z0,size,sourceErrorStuds:sourceError,loweredStuds:lower,volumeLoweredStuds:volumeLowering,estimatedMaxGapStuds:worstGap+volumeLowering});terrain.push(part);
   }
   for(const root of [...roots].sort()){const [x,z]=root.split(':').map(Number);tile(x*settings.rootCell,z*settings.rootCell,settings.rootCell);}

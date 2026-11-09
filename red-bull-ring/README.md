@@ -4,9 +4,11 @@ A separate Jakarta builder using the supplied Red Bull Ring GLB and the
 racetrack-database Spielberg route. It includes the GP circuit, pit lane,
 low kerbs, edge markings, simplified runoff/gravel and grass slopes.
 
-**4,886 placed parts; 4,887 with one existing grass plate.** Other objects in
-the server add to that total. Terrain accounts for 981 parts. The circuit
-retains 169.74 studs of elevation change at the accepted vehicle scale.
+**9,120 placed parts; 9,121 with one existing grass plate.** Other objects in
+the server add to that total. Terrain accounts for 3,175 parts. The layout is
+1.5 times larger than the original build, with 254.62 studs of elevation
+change. Main-road widths retain the original 40-stud minimum; the pit is
+12 studs wide for a single car.
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/loader.lua"))()
@@ -37,6 +39,11 @@ that slot, restore the matching checkpoint with:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/loader.lua"))("resume")
 ```
 
+This revised pit layout needs a **fresh build**. Earlier checkpoints cannot
+resume into this geometry. The original 4,886-part loader remains available
+at `releases/56bae26afe425fba3fff/loader.lua`, and the previous 9,128-part
+loader remains at `releases/a26d5cdb3c798f02bae5/loader.lua` for existing builds.
+
 Checkpoints use `red-bull-ring-jakarta-checkpoint.json`. The loader pins its
 assets under a content-derived release directory. Keep the pinned loader for
 an existing build if regenerating changes the geometry. The `"diagnose"` mode
@@ -47,24 +54,37 @@ reports placement/count observations without sending placements.
 The road fitter uses small rectangles that cover the sampled lane boundaries,
 with a 0.006-stud guard instead of extra angle-based padding. Necessary
 overlaps remain at bends. All checked asphalt/pit overlap heights stay below
-0.015 studs; neighbouring main-road pitch changes stay below 0.14 degrees.
-The pit connection reaches about 0.42 degrees. Paint is noncolliding.
+0.01 studs; neighbouring road and pit joints stay below 0.008 studs.
+Main-road pitch changes stay below 0.084 degrees, and pit pitch changes stay
+below 0.131 degrees. Paint is noncolliding.
+
+The pit uses the longer inner entry from the GLB. Its entry now begins inside
+the racing asphalt. One fitted line follows the native pit straight and
+continues through the former sideways jog, retaining steady separation from
+the racing straight. The exit uses one rounded L turn with a 90-stud radius
+and merges into the racing lane. Both connections are checked across the
+full car width for asphalt coverage and a surface step below 0.01 studs.
+The frozen model reference remains available separately from this adjusted
+drivable layout.
 
 World surface gradients are smoothed and tight bends receive shared planar
-gradients. This changes local source heights by up to 25.61 studs while
+gradients. This changes local source heights by up to 38.42 studs while
 preserving the overall elevation range and horizontal layout. It is an
 approximation intended for the block builder. Live suspension/tyre behavior
 has not been measured.
 
-Grass uses narrow fitted strips beside the road and wider smoothed slopes
-out to 250 studs. Open areas use broad 256–1024-stud planar blocks over a
-tiled foundation. Rectangular borders and some outer terrace seams remain.
-Buried solid corners may extend below the foundation datum. Every grass
-top and full solid is checked beneath the track geometry. Model tyre-mark
+Grass uses narrow fitted strips beside the road, wider smoothed slopes out
+to 250 studs and an outer taper out to 500 studs. Inside bends limit their
+offsets to avoid folded slopes. World-space fitting prevents vertical fins.
+Open areas use broad 256–1024-stud planar blocks over a level tiled
+foundation. Every grass solid extends down to that foundation; its footprint
+covers the complete terrain. Rectangular borders and some terrace seams
+remain visible. Buried solid corners can extend below the foundation datum.
+Every grass top and full solid is checked beneath the track geometry. Model tyre-mark
 overlays and isolated surface fragments are omitted; buildings, grandstands,
 trees, fences and other scenery are excluded.
 
-The full build passes 209,482 lane coverage/collision samples and exact
+The full build passes 381,822 lane coverage/collision samples and exact
 rotated-box terrain intersection checks. Offline runtime tests cover placement
 confirmation, count repair, preview, pause/resume, checkpoint validation and
 HTTP failures. **Live driving and Jakarta slot saving still require testing.**
@@ -73,6 +93,9 @@ unknown, and a verified part count does not establish successful saving.
 
 Open [the interactive viewer](red-bull-ring-3d-viewer.html) to inspect the
 terrain, or see [the complete preview](build-3d.png),
+[the corrected pit exit](build-pit-exit.png),
+[the straight pit lane](build-pit-lane.png),
+[a low-angle terrain view](build-terrain-middle.png),
 [the road joint closeup](build-road-joint.png) and
 [the elevation profile](elevation-profile.svg).
 

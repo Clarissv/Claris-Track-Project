@@ -40,6 +40,10 @@ export function render(plan,width=1400,height=900,view={}) {
 export function writeArtifacts(directory,plan) {
   fs.writeFileSync(path.join(directory,'build-3d.png'),render(plan));
   fs.writeFileSync(path.join(directory,'build-topdown.png'),render(plan,1400,1200,{top:true}));
+  for(const [name,index] of [['final',13000],['middle',8500],['uphill',4400]]){
+    const p=plan.centerline[Math.min(index,plan.centerline.length-1)];
+    fs.writeFileSync(path.join(directory,`build-terrain-${name}.png`),render(plan,1200,800,{target:p.slice(0,3),span:1100,right:[Math.SQRT1_2,0,-Math.SQRT1_2],up:[-.09,.992,-.09],forward:[.7,.127,.7]}));
+  }
   const joint=plan.meta.surfaceSmoothing.roadJoins.worst.map(i=>plan.parts[i]),target=[0,1,2].map(k=>(joint[0][k]+joint[1][k])/2),b=boxBasis(joint[0]),along=unit([b.back[0],0,b.back[2]]),side=[along[2],0,-along[0]];
   fs.writeFileSync(path.join(directory,'build-road-joint.png'),render(plan,1200,800,{target,span:100,right:along,up:[-side[0]*.28,.96,-side[2]*.28],forward:[side[0]*.96,.28,side[2]*.96]}));
   const start=plan.centerline[0].slice(0,3);
@@ -48,7 +52,8 @@ export function writeArtifacts(directory,plan) {
   if(kerb){const index=(kerb.start+kerb.end)>>1,p=plan.centerline[index],a=plan.centerline[index-1],b=plan.centerline[index+1],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz),offset=kerb.side*((kerb.side>0?p[3]:p[4])+plan.meta.settings.curbWidth/2);fs.writeFileSync(path.join(directory,'build-kerb-detail.png'),render(plan,1400,900,{target:[p[0]+dz/length*offset,p[1]+.06,p[2]-dx/length*offset],span:140}));}
   if(plan.meta.placementAnchor)fs.writeFileSync(path.join(directory,'build-start-point.png'),render(plan,1400,900,{top:true,target:plan.meta.placementAnchor.position,span:500}));
   if(plan.meta.pitEntry){const a=plan.meta.pitEntry.start,b=plan.meta.pitEntry.join;fs.writeFileSync(path.join(directory,'build-pit-entry.png'),render(plan,1400,800,{top:true,target:[(a[0]+b[0])/2,0,(a[2]+b[2])/2],span:1000}));}
-  if(plan.meta.pitPoints){for(const [name,p] of [['entry',plan.meta.pitPoints[0]],['exit',plan.meta.pitPoints.at(-1)]])fs.writeFileSync(path.join(directory,`build-pit-${name}.png`),render(plan,1200,900,{top:true,target:p.pos,span:600}));}
+  if(plan.meta.pitPoints){for(const [name,p] of [['entry',plan.meta.pitPoints[0]],['exit',plan.meta.pitPoints.at(-1)]]){const a=name==='exit'&&plan.meta.pitLayout?plan.meta.pitPoints[plan.meta.pitLayout.exitStartIndex].pos:p.pos,target=p.pos.map((v,k)=>(v+a[k])/2);fs.writeFileSync(path.join(directory,`build-pit-${name}.png`),render(plan,1200,900,{top:true,target,span:name==='exit'?750:600}));}}
+  if(plan.meta.pitLayout){const l=plan.meta.pitLayout,a=plan.meta.pitPoints[l.straightStartIndex].pos,b=plan.meta.pitPoints[l.exitStartIndex].pos,[dx,dz]=l.straightDirection;fs.writeFileSync(path.join(directory,'build-pit-lane.png'),render(plan,1600,550,{target:a.map((v,k)=>(v+b[k])/2),span:Math.hypot(b[0]-a[0],b[2]-a[2])+500,right:[dx,0,dz],up:[dz,0,-dx],forward:[0,1,0]}));}
   if(plan.meta.banner){const b=plan.meta.banner,r=boxBasis(plan.parts[plan.meta.groups.banner[0]]).right;fs.writeFileSync(path.join(directory,'build-banner-front.png'),render(plan,1280,800,{target:b.position,span:b.width+16,right:r,up:b.imageTop,forward:[0,1,0]}));fs.writeFileSync(path.join(directory,'build-banner-location.png'),render(plan,1000,800,{target:b.position,span:500}));}
   const template=fs.readFileSync(path.join(directory,'viewer-template.html'),'utf8');
   fs.writeFileSync(path.join(directory,'red-bull-ring-3d-viewer.html'),template.replace('/* GENERATED_DATA */',()=>`const PLAN=${JSON.stringify(plan)};`));

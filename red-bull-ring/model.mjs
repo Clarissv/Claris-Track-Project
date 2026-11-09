@@ -5,8 +5,8 @@ import {readGlb,accessor,nodeMatrix,multiply,transform,decodePng} from './mesh-g
 // Material IDs were checked against triangle geometry and embedded texture previews.
 // 10/11 are tyre-mark overlays, not separate paved ground.
 export const surfaceMaterials={road:[111],runoff:[107],kerb:[14,22,109],gravel:[108,123],grass:[121],edge:[119]};
-export function loadSurfaces(filename){
-  const glb=readGlb(filename),g=glb.json,roles=new Map(Object.entries(surfaceMaterials).flatMap(([role,ids])=>ids.map(id=>[id,role])));
+export function loadSurfaces(filename,selection=surfaceMaterials){
+  const glb=readGlb(filename),g=glb.json,roles=new Map(Object.entries(selection).flatMap(([role,ids])=>ids.map(id=>[id,role])));
   const primitives=[],images=new Map(),identity=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
   function imageAt(index){
     if(images.has(index))return images.get(index);

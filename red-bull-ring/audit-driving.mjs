@@ -1,6 +1,28 @@
 import {collisionSampler,inFootprint,overlapVertices,topHeight} from './surface-audit.mjs';
 import {boxCorners} from './geometry.mjs';
 
+export function auditPitConnections(plan){
+  const main=collisionSampler(plan.meta.groups.asphalt.map(i=>plan.parts[i])),pit=collisionSampler(plan.meta.groups.pitLane.map(i=>plan.parts[i])),points=plan.meta.pitPoints;
+  const ends={};
+  for(const [name,line] of [['entry',points],['exit',[...points].reverse()]]){
+    let distance=0,samples=0,uncovered=0,maximumStep=0;
+    for(let i=0;i<line.length-1&&distance<5;i++){
+      const a=line[i],b=line[i+1],dx=b.pos[0]-a.pos[0],dz=b.pos[2]-a.pos[2],length=Math.hypot(dx,dz),count=Math.max(1,Math.ceil(Math.min(length,5-distance)/.5));
+      for(let j=0;j<count;j++){
+        const t=j/count,p=a.pos.map((x,k)=>x+(b.pos[k]-x)*t);
+        for(const offset of [-.98*a.wl,0,.98*a.wr]){
+          const x=p[0]+dz/length*offset,z=p[2]-dx/length*offset,mainHeight=main(x,z),pitHeight=pit(x,z);samples++;
+          if(!Number.isFinite(mainHeight)||!Number.isFinite(pitHeight)){uncovered++;continue;}
+          maximumStep=Math.max(maximumStep,Math.abs(mainHeight-pitHeight));
+        }
+      }
+      distance+=length;
+    }
+    ends[name]={samples,uncovered,maxSurfaceStepStuds:maximumStep};
+  }
+  return ends;
+}
+
 export function auditDriving(plan){
   const groups=plan.meta.groups,visual=new Set(plan.meta.nonCollidingPartIndices);
   const roadIndices=[...groups.asphalt,...groups.pitLane],roads=roadIndices.map(i=>plan.parts[i]);

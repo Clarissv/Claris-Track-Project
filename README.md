@@ -21,7 +21,7 @@ red-bull-ring/
 | Flat Sepang | 9,044 | [Flat Sepang](sepang/flat/README.md) |
 | Elevated Monza | 10,047 | [Monza](monza/README.md) |
 | Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
-| Red Bull Ring with terrain | 4,886 | [Red Bull Ring](red-bull-ring/README.md) |
+| Red Bull Ring with terrain (1.5× layout) | 9,120 | [Red Bull Ring](red-bull-ring/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint
@@ -88,7 +88,7 @@ After preparing changes, run from that checkout:
 
 ```powershell
 git add -A
-git commit -m "Add Red Bull Ring with elevation, terrain and cleaner road joints"
+git commit -m "Fix Red Bull Ring pit route, smooth road joints and enlarge terrain layout"
 git push origin main
 ```
 

@@ -7,8 +7,9 @@ import assert from 'node:assert/strict';
 import {boxCorners,boxBasis} from './geometry.mjs';
 import {dot} from './track-geometry.mjs';
 import {auditJoins,topHeight} from './surface-audit.mjs';
-import {clearanceAudit,volumeAudit,boxesOverlap,constrainSurfaces} from './bulk-terrain.mjs';
-import {auditDriving} from './audit-driving.mjs';
+import {clearanceAudit,volumeAudit,boxesOverlap,constrainSurfaces,solidToDatum} from './bulk-terrain.mjs';
+import {terrainSlab} from './terrain-slab.mjs';
+import {auditDriving,auditPitConnections} from './audit-driving.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),read=name=>JSON.parse(fs.readFileSync(path.join(here,name)));
 const plan=read('red-bull-ring-plan.json'),terrainStart=plan.meta.terrain.basePartCount;
 const track={parts:plan.parts.slice(0,terrainStart)},grass=plan.parts.slice(terrainStart);
@@ -17,7 +18,8 @@ const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 test('the separate elevated circuit has finite valid geometry below the total object budget',()=>{
   assert.equal(plan.meta.format,'red-bull-ring-elevated-v1');assert.equal(plan.meta.partCount,plan.parts.length);
   assert.equal(plan.meta.terrain.totalWithExistingGrass,plan.parts.length+1);assert(plan.parts.length+1<10000);
-  assert(plan.meta.retainedHeightRange[1]-plan.meta.retainedHeightRange[0]>160);
+  assert.equal(plan.meta.layoutScale,1.5);
+  assert(Math.abs(plan.meta.retainedHeightRange[1]-plan.meta.retainedHeightRange[0]-254.6154)<.001);
   assert(Math.abs(plan.meta.lapLengthMetres-4320.8675)<.01);
   assert.equal(plan.meta.gameTarget.saveObjectLimit,null);
   assert.deepEqual(plan.centerline[0].slice(0,5),plan.centerline.at(-1).slice(0,5));
@@ -33,8 +35,8 @@ test('the separate elevated circuit has finite valid geometry below the total ob
 
 test('neighbouring road planes have small essential overlaps and gentle pitch changes',()=>{
   const main=auditJoins(plan,plan.meta.roadSegments,true),pit=auditJoins(plan,plan.meta.pitSegments,false);
-  assert(main.maxOverlapStep<=.0142,JSON.stringify(main));assert(pit.maxOverlapStep<=.0142,JSON.stringify(pit));
-  assert(main.maxPitchChangeDegrees<.2);assert(pit.maxPitchChangeDegrees<.5);
+  assert(main.maxOverlapStep<=.0082,JSON.stringify(main));assert(pit.maxOverlapStep<=.0082,JSON.stringify(pit));
+  assert(main.maxPitchChangeDegrees<.09);assert(pit.maxPitchChangeDegrees<.5);
   assert.equal(plan.meta.surfaceSmoothing.overlapGuardStuds,.006);
   const altered=structuredClone(plan);altered.parts[plan.meta.roadSegments[0].index][1]+=.5;
   assert(auditJoins(altered,altered.meta.roadSegments,true).maxOverlapStep>.45,'Raised road must fail the joint audit');
@@ -42,11 +44,61 @@ test('neighbouring road planes have small essential overlaps and gentle pitch ch
 
 test('dense tyre-path samples cover both roads and detect raised collision layers',()=>{
   const report=auditDriving(plan);assert(report.samples>200000);assert.equal(report.uncovered,0);
-  assert(report.maxLayerRiseStuds<=.001,JSON.stringify(report));assert(report.maxRoadOverlapStuds<.025,JSON.stringify(report));
+  assert(report.maxLayerRiseStuds<=.001,JSON.stringify(report));assert(report.maxRoadOverlapStuds<.01,JSON.stringify(report));
   assert.deepEqual(report,plan.meta.drivingAudit);
   const altered=structuredClone(plan),obstacle=[...plan.parts[0]];obstacle[1]+=1;
   altered.meta.groups.obstacle=[altered.parts.length];altered.parts.push(obstacle);
   assert(auditDriving(altered).maxLayerRiseStuds>.9,'An obstruction must be detected');
+});
+
+test('the larger layout retains road widths and the long native pit entry',()=>{
+  const raw=read('source/red-bull-ring-reference.json'),features=read('source/red-bull-ring-features.json'),scale=plan.meta.layoutScale;
+  for(let i=0;i<raw.points.length-1;i+=48){
+    const a=raw.points[i],b=plan.centerline[i*2];
+    assert(Math.abs(b[0]-a.pos[0]*scale)<.0001);assert(Math.abs(b[2]-a.pos[2]*scale)<.0001);
+    const widthFactor=Math.max(1,40/(a.wr+a.wl));
+    assert.equal(b[3],a.wr*widthFactor);assert.equal(b[4],a.wl*widthFactor);
+  }
+  assert.equal(plan.meta.pitLane.widthStuds,12);
+  assert.deepEqual(features.pitRoute.nativeTriangleCounts,[459,782,343,55]);
+  assert.equal(features.pitRoute.entryMainIndex,6171);assert.equal(features.pitRoute.exitMainIndex,814);
+  assert(features.pitRoute.maxPavementDistancePixels<1.5);
+  for(const q of plan.meta.pitPoints){assert.equal(q.wr,6);assert.equal(q.wl,6);}
+  for(const i of [80,100,120,140]){
+    const source=features.pitPoints[i].pos;
+    assert(Math.min(...plan.meta.pitPoints.map(q=>Math.hypot(q.pos[0]-source[0]*scale,q.pos[2]-source[2]*scale)))<5,'Retain the long inner entry branch');
+  }
+});
+
+test('the pit straight holds its line and the exit has one rounded L turn',()=>{
+  const layout=plan.meta.pitLayout,line=plan.meta.pitPoints,[dx,dz]=layout.straightDirection,[x,z]=layout.straightOrigin;
+  for(let i=layout.straightStartIndex;i<=layout.exitStartIndex;i++)assert(Math.abs((line[i].pos[0]-x)*dz-(line[i].pos[2]-z)*dx)<.00001,'No sideways jog before the exit');
+  let total=0;
+  for(let i=layout.exitStartIndex+1;i<line.length-1;i++){
+    const a=line[i-1].pos,b=line[i].pos,c=line[i+1].pos,u=[b[0]-a[0],b[2]-a[2]],v=[c[0]-b[0],c[2]-b[2]],turn=Math.atan2(u[0]*v[1]-u[1]*v[0],u[0]*v[0]+u[1]*v[1]);
+    assert(turn>-.000001,'The exit cannot reverse turn direction into an S');total+=turn;
+  }
+  assert(Math.abs(total*180/Math.PI-layout.exitTurnDegrees)<.5);assert(layout.exitTurnDegrees>60&&layout.exitTurnDegrees<90);assert.equal(layout.exitRadiusStuds,90);
+});
+
+test('both pit portals have full car-width overlap with the racing asphalt',()=>{
+  const report=auditPitConnections(plan);assert.deepEqual(report,plan.meta.pitConnections);
+  for(const end of Object.values(report)){assert(end.samples>=30);assert.equal(end.uncovered,0);assert(end.maxSurfaceStepStuds<.01);}
+  const features=read('source/red-bull-ring-features.json'),altered={...plan,meta:{...plan.meta,pitPoints:features.pitPoints.map(p=>({...p,pos:p.pos.map(v=>v*plan.meta.layoutScale)}))}};
+  assert(Object.values(auditPitConnections(altered)).some(end=>end.uncovered>0),'The old disconnected native endpoints must fail');
+});
+
+test('grass reaches a continuous level foundation and folded offsets cannot become fins',()=>{
+  const datum=plan.meta.terrain.foundationTop,foundations=plan.meta.terrain.foundationIndices.map(i=>plan.parts[i]);
+  assert(plan.meta.terrain.solidToFoundation);assert.equal(datum,2);
+  for(const p of foundations){assert.deepEqual(p.slice(7),[1,0,0,0,1,0]);assert.equal(p[1]+p[4]/2,datum);assert.equal(p[1]-p[4]/2,0);}
+  const reaches=p=>Math.max(...boxCorners(p).filter((_,i)=>!(i&2)).map(q=>q[1]))<=datum+.0002;
+  assert(grass.every(reaches),'Every grass solid must reach the foundation at every bottom corner');
+  const cap=[0,10,0,20,.25,10,5,1,0,0,0,1,0];assert(!reaches(cap));assert(reaches(solidToDatum(cap,datum)));
+  const folded=[{pos:[0,100,0],wr:.5,wl:.5,bank:.2,surfaceRight:[1,0,0]},{pos:[0,110,.01],wr:.5,wl:.5,bank:.2,surfaceRight:[1,0,0]}];
+  const fitted=terrainSlab(folded,0,1);assert(fitted.every(Number.isFinite));assert(fitted[11]>=.76);assert(reaches(solidToDatum(fitted,datum)));
+  const minX=Math.min(...foundations.map(p=>p[0]-p[3]/2)),maxX=Math.max(...foundations.map(p=>p[0]+p[3]/2)),minZ=Math.min(...foundations.map(p=>p[2]-p[5]/2)),maxZ=Math.max(...foundations.map(p=>p[2]+p[5]/2));
+  for(const p of grass)for(const q of boxCorners(p)){assert(q[0]>=minX-.0001&&q[0]<=maxX+.0001);assert(q[2]>=minZ-.0001&&q[2]<=maxZ+.0001);}
 });
 
 test('grass top planes and full solids remain below every track underside',()=>{
