@@ -4,8 +4,8 @@ A separate Jakarta builder using the supplied Red Bull Ring GLB and the
 racetrack-database Spielberg route. It includes the GP circuit, pit lane,
 low kerbs, edge markings, simplified runoff/gravel and grass slopes.
 
-**9,120 placed parts; 9,121 with one existing grass plate.** Other objects in
-the server add to that total. Terrain accounts for 3,175 parts. The layout is
+**9,629 placed parts; 9,630 with one existing grass plate.** Other objects in
+the server add to that total. Terrain accounts for 3,174 parts. The layout is
 1.5 times larger than the original build, with 254.62 studs of elevation
 change. Main-road widths retain the original 40-stud minimum; the pit is
 12 studs wide for a single car.
@@ -39,10 +39,12 @@ that slot, restore the matching checkpoint with:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/loader.lua"))("resume")
 ```
 
-This revised pit layout needs a **fresh build**. Earlier checkpoints cannot
+This revised surface layout needs a **fresh build**. Earlier checkpoints cannot
 resume into this geometry. The original 4,886-part loader remains available
 at `releases/56bae26afe425fba3fff/loader.lua`, and the previous 9,128-part
 loader remains at `releases/a26d5cdb3c798f02bae5/loader.lua` for existing builds.
+The corrected 9,120-part pit version remains at
+`releases/28512ec3da8a3bb5d8d0/loader.lua`.
 
 Checkpoints use `red-bull-ring-jakarta-checkpoint.json`. The loader pins its
 assets under a content-derived release directory. Keep the pinned loader for
@@ -66,6 +68,19 @@ and merges into the racing lane. Both connections are checked across the
 full car width for asphalt coverage and a surface step below 0.01 studs.
 The frozen model reference remains available separately from this adjusted
 drivable layout.
+
+The final surface pass recovers 15 continuous kerb runs from dedicated model
+geometry, including the previously sparse stretch between Turns 9 and 10.
+Red/white stripes follow physical distance, with ramps at the ends of each
+run. Kerbs pass 31,248 coverage samples across their width; their fitted
+overlaps stay below the racing asphalt to avoid a lip on the driving lane.
+
+Broad runoff aprons now cover Turns 1, 3, 9 and 10. They use the model's
+pavement and overlay footprints with simplified white/grey surfaces. Small
+detached apron fragments are omitted. The marked straight-edge and scattered
+sand patches are removed, freeing 250 parts; substantial middle-sector gravel
+traps remain. This pass has 583 kerb parts, 669 runoff parts and 207 gravel
+parts, while preserving the preceding racing-road and pit geometry.
 
 World surface gradients are smoothed and tight bends receive shared planar
 gradients. This changes local source heights by up to 38.42 studs while
@@ -95,6 +110,8 @@ Open [the interactive viewer](red-bull-ring-3d-viewer.html) to inspect the
 terrain, or see [the complete preview](build-3d.png),
 [the corrected pit exit](build-pit-exit.png),
 [the straight pit lane](build-pit-lane.png),
+[Turn 1](build-turn-1.png), [Turn 3](build-turn-3.png),
+[Turn 9](build-turn-9.png), [Turn 10](build-turn-10.png),
 [a low-angle terrain view](build-terrain-middle.png),
 [the road joint closeup](build-road-joint.png) and
 [the elevation profile](elevation-profile.svg).

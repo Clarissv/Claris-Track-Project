@@ -1,5 +1,6 @@
 import {scaleReference,scaleGround,densifyDriving} from './layout.mjs';
 import {connectedPitLayout} from './pit-layout.mjs';
+import {addContinuousKerbs,addCornerAprons,fitKerbsBelowRoad} from './track-tidy.mjs';
 import {smoothWorldSurface} from './world-surface.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -66,9 +67,10 @@ export function compileTrack(reference,features,ground,options={}){
   const edgeMarkingSegments=[];
   for(const side of [-1,1])edgeMarkingSegments.push(...paint(points.map(p=>({...p,pos:offset(p,side*((side>0?p.wr:p.wl)-.45)),wr:.18,wl:.18})),'edgeMarkings'));
   const kerbSpans=[],kerbRuns=[],runoffSpans=[];
+  if(features.tidy){const kerbs=addContinuousKerbs(points,features.tidy.kerbRuns,pitFit.parts,settings,push);kerbSpans.push(...kerbs.spans);kerbRuns.push(...kerbs.runs);}
   for(const side of [-1,1]){
     const records=features.records.filter(r=>r.side===side),step=8;
-    for(let i=0;i<records.length;){
+    for(let i=0;!features.tidy&&i<records.length;){
       const first=records[i];if(!first.kerb){i++;continue;}let end=i+1;while(end<records.length&&records[end].kerb)end++;
       const start=first.index,last=Math.min(points.length-1,records[end-1].index+step);
       const line=points.slice(start,last+1).map(p=>({...p,pos:offset(p,side*((side>0?p.wr:p.wl)+settings.curbWidth/2)),wr:settings.curbWidth/2,wl:settings.curbWidth/2}));
@@ -103,6 +105,7 @@ export function compileTrack(reference,features,ground,options={}){
         matches.push({record:r,band:r.bands[index]});used.add(`${j}:${index}`);last=j;
       }
       const start=tidy[i].index,end=Math.min(points.length-1,tidy[last].index+step),inner=matches.reduce((s,m)=>s+m.band.inner,0)/matches.length,outer=matches.reduce((s,m)=>s+m.band.outer,0)/matches.length,width=outer-inner;
+      if(features.tidy&&(first.style!=='sand'||start<features.tidy.sandKeepRange[0]*2||end>features.tidy.sandKeepRange[1]*2))continue;
       if(width<5)continue;
       // Isolated atlas fragments are merged into the surrounding ground.
       if(first.style!=='sand'&&(matches.length<6||points[end].s-points[start].s<35))continue;
@@ -110,18 +113,23 @@ export function compileTrack(reference,features,ground,options={}){
       for(const [a,b] of adaptiveSegments(line,120,.35,6*Math.PI/180,.08))runoffSpans.push({index:push(group,fittedSlab(line,a,b,{width,thickness:.12,color,lift:-.04,guard:.03})),side,start:start+a,end:start+b});
     }
   }
+  const aprons=features.tidy?addCornerAprons(points,features.tidy.aprons,settings.layoutScale,push):null;
+  if(aprons)runoffSpans.push(...aprons.spans);
   const pitSegments=pitFit.spans.map((s,i)=>({...s,index:push('pitLane',pitFit.parts[i])}));
   const pitMarkingSegments=[];for(const side of [-1,1])pitMarkingSegments.push(...paint(pit.map(p=>({...p,pos:offset(p,side*(settings.pitWidth/2-.4)),wr:.18,wl:.18})),'pitMarkings'));
   const finish=makeSlab(points[0],points[2],points[0].wr+points[0].wl,0,.04,4,.012,.003);finish[5]=1.2;push('startFinish',finish);
   const paved={parts:[...groups.asphalt,...groups.pitLane].map(i=>parts[i])},ancillary=[...(groups.runoff??[]),...(groups.sand??[])];
   const runoffFit=constrainSurfaces(paved,ancillary.map(i=>parts[i]),.006,false);
   ancillary.forEach((id,i)=>parts[id]=runoffFit.parts[i]);
+  const curbIds=groups.curbs??[],curbFit=fitKerbsBelowRoad(paved.parts,curbIds.map(i=>parts[i]));
+  curbIds.forEach((id,i)=>parts[id]=curbFit.parts[i]);
   const grassHeights=ground.heights.filter(h=>h!==null).sort((a,b)=>a-b),datum=grassHeights[Math.floor(grassHeights.length*.002)]-2;
   for(const p of parts)p[1]=round(p[1]-datum);for(const p of points)p.pos[1]-=datum;for(const p of pit)p.pos[1]-=datum;
   const corners=parts.flatMap(boxCorners),bounds={min:[0,1,2].map(k=>Math.min(...corners.map(p=>p[k]))),max:[0,1,2].map(k=>Math.max(...corners.map(p=>p[k])))};
   const anchor=pit[Math.floor(pit.length*.34)].pos;
   const meta={format:'red-bull-ring-elevated-v1',variant:'terrain',name:'Red Bull Ring',gameTarget:{name:'Jakarta',placeId:14005966837,saveObjectLimit:null},scope:'Elevated Spielberg circuit, pit lane, low kerbs, edge lines, gravel and runoff; scenery excluded',partCount:parts.length,palette,planBounds:bounds,width:round(bounds.max[0]-bounds.min[0]),depth:round(bounds.max[2]-bounds.min[2]),sourceSha256:reference.sourceSha256,centerlineSha256:reference.centerlineSha256,referenceSha256:sourceReferenceSha,layoutScale:settings.layoutScale,lapLengthMetres:reference.lapLengthMetres,lapLengthStuds:points.at(-1).s,studsPerMetre:reference.studsPerMetre,pitRoute:features.pitRoute,groundLift:-datum,retainedHeightRange:[Math.min(...points.map(p=>p.pos[1])),Math.max(...points.map(p=>p.pos[1]))],settings,groups,groupCounts:Object.fromEntries(Object.entries(groups).map(([k,v])=>[k,v.length])),roadSegments,edgeMarkingSegments,kerbSpans,kerbRuns,runoffSpans,pitSegments,pitPoints:pit,pitLane:{widthStuds:settings.pitWidth,lengthStuds:pit.at(-1).s},placementAnchor:{name:'pit-entry',position:[anchor[0],0,anchor[2]],roadHeight:anchor[1]},outputScale:2*settings.layoutScale,catalogRoles:[{name:'Others75',appearance:'color',partIndices:[...groups.asphalt,...groups.pitLane],preserveTemplateMaterial:true,color:[65,66,66]}],nonCollidingPartIndices:[...(groups.edgeMarkings??[]),...(groups.pitMarkings??[]),...(groups.startFinish??[])],limitations:['Road pieces are fitted rectangular blocks with small essential overlaps at bends.','The source pit route is smoothed and its connection is adapted to the widened racing road.','Kerbs and runoff use model material/colour cross-sections, with tiny texture fragments merged.','Stored byte/object limits cannot be inferred from the client export.']};
   meta.pitLayout=revisedPit.meta;
+  if(features.tidy)meta.surfaceTidying={kerbRuns:features.tidy.kerbRuns,cornerAprons:aprons.patches,sandKeepRange:features.tidy.sandKeepRange,kerbSurfaceFit:{modified:curbFit.modified,maximumLoweringStuds:curbFit.maximumLowering}};
   const plan={meta,parts,centerline:points.map(p=>[...p.pos,p.wr,p.wl,p.s,...p.normal])};
   meta.surfaceSmoothing={before:profileMetrics(reference.points),after:profileMetrics(points),worldGradientSmoothing,roadJoins:auditJoins(plan,roadSegments,true),pitJoins:auditJoins(plan,pitSegments,false),roadCount:groups.asphalt.length,medianRoadLengthStuds:groups.asphalt.map(i=>parts[i][5]).sort((a,b)=>a-b)[Math.floor(groups.asphalt.length/2)],overlapGuardStuds:.006};
   if(parts.length>settings.maxParts)throw Error('Track alone exceeds the part budget: '+parts.length);

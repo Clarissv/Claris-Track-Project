@@ -6,6 +6,7 @@ import {rasterize,encodePng} from './mesh-geometry.mjs';
 import {KDTree,skeletonize,sub,dot,unit} from './track-geometry.mjs';
 import {finishPoints,gridTree,sampleHeight} from './reference.mjs';
 import {extractPit} from './pit-reference.mjs';
+import {tidyFeatures,loadTidySurfaces} from './tidy-features.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const reference=JSON.parse(fs.readFileSync(path.join(here,'source/red-bull-ring-reference.json'))),scene=loadSurfaces(path.join(here,'source/redbullring.glb'));
 if(scene.sha256!==reference.sourceSha256)throw Error('The feature source does not match the elevation reference');
@@ -42,7 +43,8 @@ for(let i=0;i<main.length;i+=4){
 const grass=rasterize({...scene,bounds,primitives:scene.primitives.filter(p=>p.role==='grass')},width,8);
 const ground={format:'red-bull-ring-ground-v1',sourceSha256:scene.sha256,cell:8*factor,x0:-offsetX*factor,z0:-offsetZ*factor,nx:grass.nx,nz:grass.nz,heights:Array.from(grass.heights,h=>Number.isFinite(h)?Math.round(h*factor*100)/100:null),mesh:'Acuredbullring1211Mtl.002',rasterScale:scale};
 fs.writeFileSync(path.join(here,'source/ground-reference.json'),JSON.stringify(ground));
-fs.writeFileSync(path.join(here,'source/red-bull-ring-features.json'),JSON.stringify({format:'red-bull-ring-features-v1',sourceSha256:scene.sha256,referenceSha256:reference.sourceSha256,pitPoints,pitWidth:12,pitRoute:completePit.meta,records}));
+const result=tidyFeatures(reference,loadTidySurfaces(path.join(here,'source/redbullring.glb')),{format:'red-bull-ring-features-v1',sourceSha256:scene.sha256,referenceSha256:reference.sourceSha256,pitPoints,pitWidth:12,pitRoute:completePit.meta,records});
+fs.writeFileSync(path.join(here,'source/red-bull-ring-features.json'),JSON.stringify(result));
 const pixels=Buffer.alloc(road.nx*road.nz*4);for(let i=0;i<road.heights.length;i++)pixels.set(completePit.mask[i]?[240,169,65,255]:Number.isFinite(road.heights[i])?[100,112,118,255]:[27,40,32,255],i*4);
 fs.writeFileSync(path.join(here,'source/pit-reference.png'),encodePng(road.nx,road.nz,pixels));
 for(const p of pitPoints){const x=Math.round(p.pos[0]/factor+road.nx/2),z=Math.round(p.pos[2]/factor+road.nz/2);for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)if(x+dx>=0&&x+dx<road.nx&&z+dz>=0&&z+dz<road.nz)pixels.set([240,169,65,255],((z+dz)*road.nx+x+dx)*4);}

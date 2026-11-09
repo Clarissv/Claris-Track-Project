@@ -40,6 +40,7 @@ export function render(plan,width=1400,height=900,view={}) {
 export function writeArtifacts(directory,plan) {
   fs.writeFileSync(path.join(directory,'build-3d.png'),render(plan));
   fs.writeFileSync(path.join(directory,'build-topdown.png'),render(plan,1400,1200,{top:true}));
+  for(const [turn,index,span] of [[1,730,1250],[3,2230,1250],[9,6060,1100],[10,6440,1150]])fs.writeFileSync(path.join(directory,`build-turn-${turn}.png`),render(plan,1100,800,{top:true,target:plan.centerline[index*2].slice(0,3),span}));
   for(const [name,index] of [['final',13000],['middle',8500],['uphill',4400]]){
     const p=plan.centerline[Math.min(index,plan.centerline.length-1)];
     fs.writeFileSync(path.join(directory,`build-terrain-${name}.png`),render(plan,1200,800,{target:p.slice(0,3),span:1100,right:[Math.SQRT1_2,0,-Math.SQRT1_2],up:[-.09,.992,-.09],forward:[.7,.127,.7]}));

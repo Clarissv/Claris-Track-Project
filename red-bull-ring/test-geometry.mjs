@@ -7,9 +7,10 @@ import assert from 'node:assert/strict';
 import {boxCorners,boxBasis} from './geometry.mjs';
 import {dot} from './track-geometry.mjs';
 import {auditJoins,topHeight} from './surface-audit.mjs';
+import {collisionSampler} from './surface-audit.mjs';
 import {clearanceAudit,volumeAudit,boxesOverlap,constrainSurfaces,solidToDatum} from './bulk-terrain.mjs';
 import {terrainSlab} from './terrain-slab.mjs';
-import {auditDriving,auditPitConnections} from './audit-driving.mjs';
+import {auditDriving,auditPitConnections,auditKerbCoverage} from './audit-driving.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),read=name=>JSON.parse(fs.readFileSync(path.join(here,name)));
 const plan=read('red-bull-ring-plan.json'),terrainStart=plan.meta.terrain.basePartCount;
 const track={parts:plan.parts.slice(0,terrainStart)},grass=plan.parts.slice(terrainStart);
@@ -86,6 +87,31 @@ test('both pit portals have full car-width overlap with the racing asphalt',()=>
   for(const end of Object.values(report)){assert(end.samples>=30);assert.equal(end.uncovered,0);assert(end.maxSurfaceStepStuds<.01);}
   const features=read('source/red-bull-ring-features.json'),altered={...plan,meta:{...plan.meta,pitPoints:features.pitPoints.map(p=>({...p,pos:p.pos.map(v=>v*plan.meta.layoutScale)}))}};
   assert(Object.values(auditPitConnections(altered)).some(end=>end.uncovered>0),'The old disconnected native endpoints must fail');
+});
+
+test('recovered kerb runs are continuous across their full width',()=>{
+  const report=auditKerbCoverage(plan);assert.deepEqual(report,plan.meta.kerbCoverage);assert(report.samples>30000);assert.equal(report.uncovered,0);assert(report.maxRiseStuds<.14);assert(report.minRiseStuds>-.15);
+  assert.equal(plan.meta.kerbRuns.length,15);
+  assert(plan.meta.kerbRuns.some(r=>r.side===1&&r.start<=6172*2&&r.end>=6268*2));
+  const altered=structuredClone(plan),hole=6200*2,missing=new Set(plan.meta.kerbSpans.filter(s=>s.side===1&&s.end>=hole&&s.start<=hole+12).map(s=>s.index));
+  altered.meta.groups.curbs=altered.meta.groups.curbs.filter(i=>!missing.has(i));
+  assert(auditKerbCoverage(altered).uncovered>0,'Removing a stripe must expose a kerb coverage failure');
+});
+
+test('four broad runoff aprons replace the marked sand fragments',()=>{
+  const features=read('source/red-bull-ring-features.json'),patches=plan.meta.surfaceTidying.cornerAprons;
+  assert.deepEqual(patches.map(p=>p.turn),[1,3,9,10]);assert.equal(plan.meta.groupCounts.sand,207);
+  const sand=new Set(plan.meta.groups.sand);
+  for(const span of plan.meta.runoffSpans.filter(s=>sand.has(s.index))){assert(span.start>=3200*2);assert(span.end<=5500*2);}
+  for(const patch of patches){
+    assert(patch.indices.length>=15);const surface=collisionSampler(patch.indices.map(i=>plan.parts[i])),apron=features.tidy.aprons.find(a=>a.turn===patch.turn),records=apron.records.filter(r=>r.outer!==null),r=records[Math.floor(records.length/2)],i=r.index*2,q=plan.centerline[i],a=plan.centerline[i-1],b=plan.centerline[i+1],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz);
+    for(const fraction of [.2,.5,.8]){const d=q[3]+3.25+(r.outer*plan.meta.layoutScale-3.25)*fraction;assert(Number.isFinite(surface(q[0]+dz/length*d,q[2]-dx/length*d)),`Turn ${patch.turn} apron must cover its body`);}
+  }
+});
+
+test('surface tidying preserves the corrected racing road and pit geometry',()=>{
+  const old=read('releases/28512ec3da8a3bb5d8d0/runtime-plan.json'),oldRoads=old.meta.catalogRoles[0].partIndices.map(i=>old.parts[i]),roads=[...plan.meta.groups.asphalt,...plan.meta.groups.pitLane].map(i=>plan.parts[i]);
+  assert.deepEqual(roads,oldRoads);
 });
 
 test('grass reaches a continuous level foundation and folded offsets cannot become fins',()=>{

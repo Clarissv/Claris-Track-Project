@@ -1,6 +1,22 @@
 import {collisionSampler,inFootprint,overlapVertices,topHeight} from './surface-audit.mjs';
 import {boxCorners} from './geometry.mjs';
 
+export function auditKerbCoverage(plan){
+  const kerbs=collisionSampler(plan.meta.groups.curbs.map(i=>plan.parts[i])),pit=collisionSampler(plan.meta.groups.pitLane.map(i=>plan.parts[i]));let samples=0,uncovered=0,pitOpenings=0,worst=null,maxRise=-Infinity,minRise=Infinity;
+  for(const run of plan.meta.kerbRuns)for(let i=run.start;i<run.end;i++){
+    const a=plan.centerline[i],b=plan.centerline[i+1],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz),count=Math.max(1,Math.ceil(length/.5));
+    for(let j=0;j<count;j++){
+      const t=j/count,q=a.map((v,k)=>v+(b[k]-v)*t);
+      for(const fraction of [-.8,0,.8]){
+        const d=run.side*((run.side>0?q[3]:q[4])+plan.meta.settings.curbWidth/2+fraction*plan.meta.settings.curbWidth/2),x=q[0]+dz/length*d,z=q[2]-dx/length*d,h=kerbs(x,z);samples++;
+        if(!Number.isFinite(h)){if(Number.isFinite(pit(x,z)))pitOpenings++;else{uncovered++;worst??={index:i,side:run.side,fraction,x,z};}continue;}
+        const road=q[1]-(q[6]*(x-q[0])+q[8]*(z-q[2]))/q[7],rise=h-road;maxRise=Math.max(maxRise,rise);minRise=Math.min(minRise,rise);
+      }
+    }
+  }
+  return {samples,uncovered,pitOpenings,worst,maxRiseStuds:maxRise,minRiseStuds:minRise};
+}
+
 export function auditPitConnections(plan){
   const main=collisionSampler(plan.meta.groups.asphalt.map(i=>plan.parts[i])),pit=collisionSampler(plan.meta.groups.pitLane.map(i=>plan.parts[i])),points=plan.meta.pitPoints;
   const ends={};
