@@ -1,0 +1,681 @@
+{
+  "format": "circuit-save-comparison-v1",
+  "generatedFrom": "Current local numeric plans and builder source; no live server state.",
+  "byteCountNote": "geometryJsonBytes measures our compact numeric plan arrays. The server save schema, encoding, compression and datastore key arrangement are unknown; these are not server save payload bytes.",
+  "knownMonzaEvidence": {
+    "successfulTrackPrefix": 9519,
+    "successfulObjectsWithGrass": 9520,
+    "failedCompletedObjects": 10048,
+    "pitRoadPartsInSuccessfulPrefix": 13
+  },
+  "sharedRuntime": {
+    "geometryAndAppearanceRequestsIdentical": true,
+    "placementCallIdentical": true
+  },
+  "redBullRing": {
+    "parts": 9629,
+    "totalWithOneGrass": 9630,
+    "planPartsSha256": "31f809e774b56678cd816d6a032238462b57ea29d095eb56939c6f95058f6a29",
+    "geometryJsonBytes": 1160018,
+    "invalid": [],
+    "groups": {
+      "asphalt": {
+        "parts": 3181,
+        "firstPart": 1,
+        "lastPart": 3181,
+        "catalogs": [
+          "Others75"
+        ],
+        "styles": [
+          {
+            "name": "asphalt",
+            "rgb": [
+              65,
+              66,
+              66
+            ],
+            "material": "Concrete"
+          }
+        ],
+        "sizeRanges": [
+          [
+            40.0132,
+            47.5183
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            1.2697,
+            61.7153
+          ]
+        ],
+        "minUpY": 0.99068055,
+        "nonColliding": 0,
+        "geometryJsonBytes": 378397
+      },
+      "edgeMarkings": {
+        "parts": 1261,
+        "firstPart": 3182,
+        "lastPart": 4442,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            0.3336,
+            0.6076
+          ],
+          [
+            0.04,
+            0.04
+          ],
+          [
+            0.2686,
+            127.6363
+          ]
+        ],
+        "minUpY": 0.99068147,
+        "nonColliding": 1261,
+        "geometryJsonBytes": 150807
+      },
+      "curbs": {
+        "parts": 583,
+        "firstPart": 4443,
+        "lastPart": 5025,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "red",
+            "rgb": [
+              179,
+              44,
+              40
+            ],
+            "material": "SmoothPlastic"
+          },
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            3.1835,
+            3.4558
+          ],
+          [
+            0.12,
+            0.12
+          ],
+          [
+            1.2915,
+            11.9682
+          ]
+        ],
+        "minUpY": 0.99084174,
+        "nonColliding": 0,
+        "geometryJsonBytes": 69665
+      },
+      "sand": {
+        "parts": 207,
+        "firstPart": 5026,
+        "lastPart": 5232,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "sand",
+            "rgb": [
+              174,
+              156,
+              122
+            ],
+            "material": "Sand"
+          }
+        ],
+        "sizeRanges": [
+          [
+            9.0341,
+            229.7077
+          ],
+          [
+            0.12,
+            0.12
+          ],
+          [
+            1.7789,
+            107.2606
+          ]
+        ],
+        "minUpY": 0.99771582,
+        "nonColliding": 0,
+        "geometryJsonBytes": 24859
+      },
+      "runoff": {
+        "parts": 669,
+        "firstPart": 5233,
+        "lastPart": 5901,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          },
+          {
+            "name": "concrete",
+            "rgb": [
+              130,
+              132,
+              133
+            ],
+            "material": "Concrete"
+          }
+        ],
+        "sizeRanges": [
+          [
+            6.6869,
+            326.906
+          ],
+          [
+            0.16,
+            0.16
+          ],
+          [
+            2.3254,
+            240.1649
+          ]
+        ],
+        "minUpY": 0.99512776,
+        "nonColliding": 0,
+        "geometryJsonBytes": 81925
+      },
+      "pitLane": {
+        "parts": 314,
+        "firstPart": 5902,
+        "lastPart": 6215,
+        "catalogs": [
+          "Others75"
+        ],
+        "styles": [
+          {
+            "name": "asphalt",
+            "rgb": [
+              65,
+              66,
+              66
+            ],
+            "material": "Concrete"
+          }
+        ],
+        "sizeRanges": [
+          [
+            12.006,
+            12.1278
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            1.722,
+            96.0882
+          ]
+        ],
+        "minUpY": 0.9965285,
+        "nonColliding": 0,
+        "geometryJsonBytes": 37559
+      },
+      "pitMarkings": {
+        "parts": 239,
+        "firstPart": 6216,
+        "lastPart": 6454,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            0.366,
+            0.606
+          ],
+          [
+            0.04,
+            0.04
+          ],
+          [
+            5.6456,
+            127.6816
+          ]
+        ],
+        "minUpY": 0.99649772,
+        "nonColliding": 239,
+        "geometryJsonBytes": 28684
+      },
+      "startFinish": {
+        "parts": 1,
+        "firstPart": 6455,
+        "lastPart": 6455,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            40.8315,
+            40.8315
+          ],
+          [
+            0.04,
+            0.04
+          ],
+          [
+            1.2,
+            1.2
+          ]
+        ],
+        "minUpY": 0.99881031,
+        "nonColliding": 1,
+        "geometryJsonBytes": 119
+      },
+      "terrain": {
+        "parts": 3174,
+        "firstPart": 6456,
+        "lastPart": 9629,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "grass",
+            "rgb": [
+              76,
+              112,
+              50
+            ],
+            "material": "Grass"
+          }
+        ],
+        "sizeRanges": [
+          [
+            1.0657,
+            1542.344
+          ],
+          [
+            2,
+            350.4516
+          ],
+          [
+            0.1169,
+            1400.5696
+          ]
+        ],
+        "minUpY": 0.76193932,
+        "nonColliding": 0,
+        "geometryJsonBytes": 388011
+      }
+    }
+  },
+  "monza": {
+    "parts": 10047,
+    "totalWithOneGrass": 10048,
+    "planPartsSha256": "68f7ea6595b564d7ad4a25581be63f39f12c71d0fab967e42dc33b12459c6341",
+    "geometryJsonBytes": 1175537,
+    "invalid": [],
+    "groups": {
+      "asphalt": {
+        "parts": 4814,
+        "firstPart": 1,
+        "lastPart": 4814,
+        "catalogs": [
+          "Others75"
+        ],
+        "styles": [
+          {
+            "name": "asphalt",
+            "rgb": [
+              65,
+              66,
+              66
+            ],
+            "material": "Concrete"
+          }
+        ],
+        "sizeRanges": [
+          [
+            40.0095,
+            41.7783
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            0.5708,
+            50.453
+          ]
+        ],
+        "minUpY": 0.9944552,
+        "nonColliding": 0,
+        "geometryJsonBytes": 558126
+      },
+      "edgeMarkings": {
+        "parts": 1721,
+        "firstPart": 4815,
+        "lastPart": 6535,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            0.36,
+            0.362
+          ],
+          [
+            0.04,
+            0.04
+          ],
+          [
+            0.0512,
+            95.935
+          ]
+        ],
+        "minUpY": 0.9944494,
+        "nonColliding": 1721,
+        "geometryJsonBytes": 202271
+      },
+      "curbs": {
+        "parts": 1566,
+        "firstPart": 6536,
+        "lastPart": 8101,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "red",
+            "rgb": [
+              177,
+              43,
+              41
+            ],
+            "material": "SmoothPlastic"
+          },
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          },
+          {
+            "name": "green-painted-runoff",
+            "rgb": [
+              55,
+              118,
+              62
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            3.2,
+            3.3058
+          ],
+          [
+            0.12,
+            0.12
+          ],
+          [
+            0.1681,
+            16.1389
+          ]
+        ],
+        "minUpY": 0.98216795,
+        "nonColliding": 0,
+        "geometryJsonBytes": 184821
+      },
+      "runoff": {
+        "parts": 399,
+        "firstPart": 8102,
+        "lastPart": 9506,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "green-painted-runoff",
+            "rgb": [
+              55,
+              118,
+              62
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            5.2262,
+            58.9553
+          ],
+          [
+            0.4,
+            0.4
+          ],
+          [
+            1.823,
+            128.7705
+          ]
+        ],
+        "minUpY": 0.99737508,
+        "nonColliding": 0,
+        "geometryJsonBytes": 47370
+      },
+      "sand": {
+        "parts": 1006,
+        "firstPart": 8112,
+        "lastPart": 9485,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "sand",
+            "rgb": [
+              172,
+              152,
+              116
+            ],
+            "material": "Sand"
+          }
+        ],
+        "sizeRanges": [
+          [
+            8.0279,
+            254.3233
+          ],
+          [
+            0.4,
+            0.4
+          ],
+          [
+            2.2709,
+            60.3025
+          ]
+        ],
+        "minUpY": 0.99445464,
+        "nonColliding": 0,
+        "geometryJsonBytes": 119120
+      },
+      "pitLane": {
+        "parts": 346,
+        "firstPart": 9507,
+        "lastPart": 9852,
+        "catalogs": [
+          "Others75"
+        ],
+        "styles": [
+          {
+            "name": "asphalt",
+            "rgb": [
+              65,
+              66,
+              66
+            ],
+            "material": "Concrete"
+          }
+        ],
+        "sizeRanges": [
+          [
+            32.0101,
+            32.0526
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            1.1739,
+            63.8418
+          ]
+        ],
+        "minUpY": 0.99876382,
+        "nonColliding": 0,
+        "geometryJsonBytes": 40602
+      },
+      "pitMarkings": {
+        "parts": 194,
+        "firstPart": 9853,
+        "lastPart": 10046,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            0.36,
+            0.3604
+          ],
+          [
+            0.04,
+            0.04
+          ],
+          [
+            2.8599,
+            84.9628
+          ]
+        ],
+        "minUpY": 0.99882027,
+        "nonColliding": 194,
+        "geometryJsonBytes": 23118
+      },
+      "startFinish": {
+        "parts": 1,
+        "firstPart": 10047,
+        "lastPart": 10047,
+        "catalogs": [
+          "selected plain block"
+        ],
+        "styles": [
+          {
+            "name": "white",
+            "rgb": [
+              220,
+              220,
+              216
+            ],
+            "material": "SmoothPlastic"
+          }
+        ],
+        "sizeRanges": [
+          [
+            40.0093,
+            40.0093
+          ],
+          [
+            0.04,
+            0.04
+          ],
+          [
+            2,
+            2
+          ]
+        ],
+        "minUpY": 0.99973384,
+        "nonColliding": 1,
+        "geometryJsonBytes": 116
+      }
+    }
+  }
+}

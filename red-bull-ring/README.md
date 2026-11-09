@@ -3,6 +3,8 @@
 A separate Jakarta builder using the supplied Red Bull Ring GLB and the
 racetrack-database Spielberg route. It includes the GP circuit, pit lane,
 low kerbs, edge markings, simplified runoff/gravel and grass slopes.
+For an empty starting area beside the pit, use the separate
+[clear-start version](clear-start/README.md).
 
 **9,629 placed parts; 9,630 with one existing grass plate.** Other objects in
 the server add to that total. Terrain accounts for 3,174 parts. The layout is
@@ -113,6 +115,8 @@ confirmation, count repair, preview, pause/resume, checkpoint validation and
 HTTP failures. **Live driving and Jakarta slot saving still require testing.**
 The local 10,000-object guard is a project budget; the server save cap remains
 unknown, and a verified part count does not establish successful saving.
+The renewed save investigation and read-only observer are in
+[save-debug](save-debug/README.md), including a comparison with Monza's pit.
 
 Open [the interactive viewer](red-bull-ring-3d-viewer.html) to inspect the
 terrain, or see [the complete preview](build-3d.png),

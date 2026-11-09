@@ -13,6 +13,7 @@ monza/
   save-debug/         Read-only Jakarta save diagnostics
 red-bull-ring/
   loader.lua          Elevated Red Bull Ring with terrain
+  clear-start/        Empty grass starting area beside the pit
 ```
 
 | Circuit version | Planned parts | Instructions |
@@ -22,6 +23,7 @@ red-bull-ring/
 | Elevated Monza | 10,047 | [Monza](monza/README.md) |
 | Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
 | Red Bull Ring with terrain (1.5× layout) | 9,629 | [Red Bull Ring](red-bull-ring/README.md) |
+| Red Bull Ring with a clear starting area | 9,623 | [Clear start](red-bull-ring/clear-start/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint
