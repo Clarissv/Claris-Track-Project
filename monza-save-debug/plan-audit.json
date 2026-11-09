@@ -1,0 +1,130 @@
+{
+  "format": "monza-save-investigation-v1",
+  "evidence": {
+    "savedTrackParts": 9519,
+    "savedServerObjects": 9520,
+    "completedTrackParts": 10047,
+    "completedServerObjects": 10048,
+    "retryStillFails": true,
+    "pcSaveStillFails": true,
+    "screenshot": "../Monza/image.png"
+  },
+  "remainingParts": 528,
+  "remainingGroups": {
+    "pitLane": 333,
+    "pitMarkings": 194,
+    "startFinish": 1
+  },
+  "invalidTailParts": [],
+  "pitRoadTail": {
+    "firstIndex": 9520,
+    "lastIndex": 9852,
+    "parts": 333,
+    "catalogs": [
+      "Others75"
+    ],
+    "styles": [
+      {
+        "name": "asphalt",
+        "rgb": [
+          65,
+          66,
+          66
+        ],
+        "material": "Concrete"
+      }
+    ],
+    "sizeRanges": [
+      [
+        32.0101,
+        32.0428
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1.1739,
+        63.8418
+      ]
+    ],
+    "nonColliding": 0
+  },
+  "pitPaint": {
+    "firstIndex": 9853,
+    "lastIndex": 10046,
+    "parts": 194,
+    "catalogs": [
+      "selected plain block"
+    ],
+    "styles": [
+      {
+        "name": "white",
+        "rgb": [
+          220,
+          220,
+          216
+        ],
+        "material": "SmoothPlastic"
+      }
+    ],
+    "sizeRanges": [
+      [
+        0.36,
+        0.3604
+      ],
+      [
+        0.04,
+        0.04
+      ],
+      [
+        2.8599,
+        84.9628
+      ]
+    ],
+    "nonColliding": 194
+  },
+  "startFinish": {
+    "firstIndex": 10047,
+    "lastIndex": 10047,
+    "parts": 1,
+    "catalogs": [
+      "selected plain block"
+    ],
+    "styles": [
+      {
+        "name": "white",
+        "rgb": [
+          220,
+          220,
+          216
+        ],
+        "material": "SmoothPlastic"
+      }
+    ],
+    "sizeRanges": [
+      [
+        40.0093,
+        40.0093
+      ],
+      [
+        0.04,
+        0.04
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "nonColliding": 1
+  },
+  "observations": [
+    "The screenshot shows the completed non-terrain builder with the correct server count.",
+    "The first 13 pit-road parts were already included in the successful partial save.",
+    "The remaining pit roads use the same Others75 road role as the main circuit.",
+    "Pit paint uses the same white palette and plain block as main edge markings.",
+    "Saving the same build also failed when retried from Roblox on PC.",
+    "No saved server handler or serialization schema is present in the client export.",
+    "A payload/object limit, a bad saved field in the tail, and a storage failure remain distinct hypotheses."
+  ]
+}
