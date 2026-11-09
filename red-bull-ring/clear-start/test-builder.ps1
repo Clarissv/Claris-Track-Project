@@ -40,6 +40,9 @@ try {
     $autoTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-autosave.lua'))
     $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $autoTests + "
 -- HTTP_LOADER_TESTS")
+    $recoveryTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-recovery.lua')).Replace('-- RECOVERY_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-recovery.lua')))
+    $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $recoveryTests + "
+-- HTTP_LOADER_TESTS")
     if ($HttpLoader) {
         $httpTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-http-loader.lua'))
         $httpTests = $httpTests.Replace('-- HTTP_LOADER_SOURCE', [IO.File]::ReadAllText((Resolve-Path -LiteralPath $HttpLoader).Path))

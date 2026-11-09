@@ -1,38 +1,43 @@
 {
   "format": "red-bull-ring-github-release-v1",
-  "version": "d3e981f5d1ece8f922ae",
+  "version": "3d55ef952c287124c5d1",
   "partCount": 9623,
   "totalWithExistingGrass": 9624,
   "files": [
     {
-      "path": "releases/d3e981f5d1ece8f922ae/red-bull-ring-builder.lua",
-      "bytes": 60996,
-      "sha256": "4641cab82b46bbb500a249b8ebc1ac3d69d43eb612bcdacddf378857360645b3"
+      "path": "releases/3d55ef952c287124c5d1/red-bull-ring-builder.lua",
+      "bytes": 61423,
+      "sha256": "49dd53e0ea02a3231126cae7aa3a7826895b8a9b0879ecd68ae2db888d24732c"
     },
     {
-      "path": "releases/d3e981f5d1ece8f922ae/runtime-plan.json",
+      "path": "releases/3d55ef952c287124c5d1/runtime-plan.json",
       "bytes": 1186968,
       "sha256": "f768abb159c980e7085a56dc48b2283f90e7457dfdc6e2c1efc73a3be8e71304"
     },
     {
-      "path": "releases/d3e981f5d1ece8f922ae/red-bull-ring-save.lua",
+      "path": "releases/3d55ef952c287124c5d1/red-bull-ring-save.lua",
       "bytes": 6118,
       "sha256": "77a91b82a8041e3ebde8d8a3e683ab9f27a93ad3d576c487e6578b80692e0635"
     },
     {
-      "path": "releases/d3e981f5d1ece8f922ae/red-bull-ring-checkpoint.lua",
+      "path": "releases/3d55ef952c287124c5d1/red-bull-ring-recovery.lua",
+      "bytes": 3288,
+      "sha256": "5b0b803310efe8e0e0f839b1cb90ef0560f97f32d2cf80955e3ba25b5a23f9d3"
+    },
+    {
+      "path": "releases/3d55ef952c287124c5d1/red-bull-ring-checkpoint.lua",
       "bytes": 3875,
       "sha256": "56fa7afc31813ada0c90b53e16fc5a55711a3cba983588c5c69dc881fb62983d"
     },
     {
-      "path": "releases/d3e981f5d1ece8f922ae/red-bull-ring-diagnose.lua",
+      "path": "releases/3d55ef952c287124c5d1/red-bull-ring-diagnose.lua",
       "bytes": 5166,
       "sha256": "0acb864733f3633e01f3160e4818d52b9c9c8333d1f3413d7a39b8ef2d324d59"
     },
     {
-      "path": "releases/d3e981f5d1ece8f922ae/loader.lua",
-      "bytes": 2420,
-      "sha256": "ef8c227eaae66be1315d4faa55e6ac8367ecccc0495716bb7450b43aaaf05dc9"
+      "path": "releases/3d55ef952c287124c5d1/loader.lua",
+      "bytes": 2718,
+      "sha256": "ff7bbb78c2e5655bb417c21e20fed6e3ce568fbbb49cab6dcaf464c8df015b9c"
     }
   ]
 }

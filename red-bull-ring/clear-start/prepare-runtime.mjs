@@ -4,6 +4,7 @@ const adapt=s=>s.replaceAll('RedBullRing','RedBullRingClearStart').replaceAll('r
 for(const name of ['builder-template.luau','plan-loader.luau','launcher-template.luau','github-loader-template.luau','red-bull-ring-checkpoint.lua','red-bull-ring-diagnose.lua','test-builder.lua','test-http-loader.lua','test-builder.ps1','viewer-template.html']){
   let source=adapt(fs.readFileSync(new URL(name,parent),'utf8'));
   if(name==='builder-template.luau'){
+    source=source.replace('Placed = {}, SentCount = 0','ExpectedServerCount = restoredCheckpoint and restoredCheckpoint.expectedServerCount or nil, Placed = {}, SentCount = 0');
     const helper=fs.readFileSync(new URL('red-bull-ring-save.lua',here),'utf8')
       .replace('return saveSlot(...)','return saveSlot(slot)')
       .replaceAll('api.State ~= "building"','(api.State ~= "building" or api == _savingBuilder)')
@@ -50,29 +51,36 @@ api = fresh()`);
   }
   if(name==='test-http-loader.lua'){
     source=source.replace('/main/red%-bull%-ring/releases/','/main/red%-bull%-ring/clear%-start/releases/');
-    source=source.replace('if url:match("/runtime%-plan%.json$")', 'if url:match("/red%-bull%-ring%-save%.lua$") then return string.dump(saveSlotHelper) end\n    if url:match("/runtime%-plan%.json$")');
+    source=source.replace('if url:match("/runtime%-plan%.json$")', 'if url:match("/red%-bull%-ring%-recovery%.lua$") then return string.dump(recoveryHelper) end\n    if url:match("/red%-bull%-ring%-save%.lua$") then return string.dump(saveSlotHelper) end\n    if url:match("/runtime%-plan%.json$")');
     source+=fs.readFileSync(new URL('test-save-loader.lua',here),'utf8');
     source+=fs.readFileSync(new URL('test-autosave-loader.lua',here),'utf8');
+    source+=fs.readFileSync(new URL('test-recovery-loader.lua',here),'utf8');
   }
   if(name==='github-loader-template.luau'){
     source=source.replace('local mode = ...','local mode,slot = ...\nif mode == "autosave" then\n    slot=tonumber(slot)\n    assert(slot and slot>=1 and slot<=4 and slot%1==0,"Choose an autosave slot from 1 to 4")\nend');
     source=source.replace('assert(mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose", "Red Bull Ring: expected build, resume, checkpoint or diagnose")',`local isSlot = type(mode) == "number" or type(mode) == "string" and mode:match("^[1-4]$")
 if isSlot then mode = tonumber(mode); assert(mode and mode >= 1 and mode <= 4 and mode % 1 == 0, "Choose a save slot from 1 to 4") end
-assert(isSlot or mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose" or mode == "autosave", "Red Bull Ring: expected build, resume, checkpoint, diagnose, autosave or a save slot from 1 to 4")`);
-    source=source.replace('if mode == "diagnose" then', 'if isSlot then return compile("red-bull-ring-save.lua")(mode) end\nif mode == "diagnose" then');
+assert(isSlot or mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose" or mode == "autosave" or mode == "recovery", "Red Bull Ring: expected build, resume, checkpoint, recovery, diagnose, autosave or a save slot from 1 to 4")
+if mode == "recovery" then slot=tonumber(slot);assert(slot and slot>=1 and slot%1==0,"Choose the saved track-part count, excluding grass") end`);
+    source=source.replace('if mode == "diagnose" then', 'if isSlot then return compile("red-bull-ring-save.lua")(mode) end\nif mode == "recovery" then return compile("red-bull-ring-recovery.lua")(slot,download("runtime-plan.json"),CHECKPOINT) end\nif mode == "diagnose" then');
     source=source.replace('return run(nil, plan, mode == "resume" and "resume" or nil, CHECKPOINT)','local api=run(nil, plan, mode == "resume" and "resume" or nil, CHECKPOINT)\nif mode == "autosave" then api.EnableAutoSave(slot) end\nreturn api');
   }
   if(name==='test-builder.ps1')source=source.replace('    if ($HttpLoader) {',`    $saveTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-save.lua')).Replace('-- SAVE_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-save.lua')))
     $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $saveTests + "\n-- HTTP_LOADER_TESTS")
     $autoTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-autosave.lua'))
     $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $autoTests + "\n-- HTTP_LOADER_TESTS")
+    $recoveryTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-recovery.lua')).Replace('-- RECOVERY_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-recovery.lua')))
+    $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $recoveryTests + "\n-- HTTP_LOADER_TESTS")
     if ($HttpLoader) {`);
-  if(name==='plan-loader.luau')source=source.replace('local PALETTE = {}',`if meta.variant == "clear-start" then
+  if(name==='plan-loader.luau'){
+    source=source.replace('    restoredCheckpoint = saved','    if saved.expectedServerCount ~= nil then assert(finite(saved.expectedServerCount) and saved.expectedServerCount % 1 == 0 and saved.expectedServerCount == saved.nextIndex, "Red Bull Ring: invalid recovery prefix count") end\n    restoredCheckpoint = saved');
+    source=source.replace('local PALETTE = {}',`if meta.variant == "clear-start" then
     local domain = meta.startDomain
     assert(type(domain) == "table" and domain.halfSize == 200 and type(domain.center) == "table" and #domain.center == 2, "Red Bull Ring: missing clear starting area")
     assert(anchor and anchor.name == "clear-area" and anchor.position[1] == domain.center[1] and anchor.position[3] == domain.center[2], "Red Bull Ring: clear area and standing anchor differ")
 end
 local PALETTE = {}`);
+  }
   if(name==='viewer-template.html')source=source.replaceAll('Red Bull Ring with terrain','Red Bull Ring with a clear starting area').replace('The red marker shows the pit standing position. Grass is kept below the original driving surfaces; the pit pavement retains its elevation.','The red marker is the centre of the empty 400 × 400-stud starting area beside the pit. The opening passes through terrain and foundation; your existing grass plate is the floor.');
   fs.writeFileSync(new URL(name,here),source);
 }
@@ -80,6 +88,7 @@ let pack=fs.readFileSync(new URL('make-package.mjs',parent),'utf8').replace("fro
 pack=pack.replace('placementAnchor,catalogRoles,gameTarget,nonCollidingPartIndices','placementAnchor,catalogRoles,gameTarget,nonCollidingPartIndices,startDomain');
 pack=pack.replace('placementAnchor,catalogRoles,gameTarget,nonCollidingPartIndices},parts','placementAnchor,catalogRoles,gameTarget,nonCollidingPartIndices,startDomain},parts');
 pack=pack.replace("  'red-bull-ring-checkpoint.lua':", "  'red-bull-ring-save.lua':Buffer.from(read('red-bull-ring-save.lua')),\n  'red-bull-ring-checkpoint.lua':");
+pack=pack.replace("  'red-bull-ring-checkpoint.lua':", "  'red-bull-ring-recovery.lua':Buffer.from(read('red-bull-ring-recovery.lua')),\n  'red-bull-ring-checkpoint.lua':");
 pack=pack.replace('writeArtifacts(here,plan);',`writeArtifacts(here,plan);
 const {render}=await import('../render.mjs');
 const a=plan.meta.placementAnchor.position,grass=[a[0],-.05,a[2],400,.1,400,5,1,0,0,0,1,0];

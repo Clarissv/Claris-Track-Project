@@ -15,6 +15,7 @@ const assets={
   'red-bull-ring-builder.lua':Buffer.from(read('red-bull-ring-builder.lua')),
   'runtime-plan.json':Buffer.from(JSON.stringify({meta:{format,variant,partCount,palette,planBounds,sourceSha256,centerlineSha256,placementAnchor,catalogRoles,gameTarget,nonCollidingPartIndices,startDomain},parts:plan.parts})),
   'red-bull-ring-save.lua':Buffer.from(read('red-bull-ring-save.lua')),
+  'red-bull-ring-recovery.lua':Buffer.from(read('red-bull-ring-recovery.lua')),
   'red-bull-ring-checkpoint.lua':Buffer.from(read('red-bull-ring-checkpoint.lua')),
   'red-bull-ring-diagnose.lua':Buffer.from(read('red-bull-ring-diagnose.lua')),
 };

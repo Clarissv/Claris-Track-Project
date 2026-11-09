@@ -98,6 +98,7 @@ if launchMode == "resume" then
     CONFIG.Origin, CONFIG.Scale = CFrame.new(table.unpack(saved.origin)), saved.scale
     CONFIG.CatalogName, CONFIG.ApplyAppearance = saved.catalogName, saved.applyAppearance
     if saved.saveObjectLimit ~= nil then CONFIG.SaveObjectLimit = saved.saveObjectLimit end
+    if saved.expectedServerCount ~= nil then assert(finite(saved.expectedServerCount) and saved.expectedServerCount % 1 == 0 and saved.expectedServerCount == saved.nextIndex, "Red Bull Ring: invalid recovery prefix count") end
     restoredCheckpoint = saved
 end
 raw, inlineJson, document = nil, nil, nil

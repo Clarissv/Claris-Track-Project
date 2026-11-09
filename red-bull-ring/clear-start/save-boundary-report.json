@@ -1,0 +1,93 @@
+{
+  "format": "red-bull-ring-save-boundary-observation-v1",
+  "variant": "clear-start",
+  "release": "d3e981f5d1ece8f922ae",
+  "planPartsSha256": "ee7503b5c45d74b3ad097ccb5b788286508468b4c0419001eb562ab23c972938",
+  "reportedLiveResult": {
+    "lastSuccessfulObjectCount": 9500,
+    "firstFailedCheckpointObjectCount": 9600
+  },
+  "assumption": "One pre-existing grass plate, no other objects, original sequential placement. Use AutoSaveReport confirmedPlanParts to verify exact plan indices for the live run.",
+  "candidateInterval": {
+    "firstPlanPart": 9500,
+    "lastPlanPart": 9599,
+    "count": 100,
+    "styles": [
+      "grass"
+    ],
+    "sizeRanges": [
+      [
+        148.4893,
+        317.7004
+      ],
+      [
+        118.1665,
+        249.185
+      ],
+      [
+        0.8229,
+        182.6155
+      ]
+    ],
+    "upYRange": [
+      0.76193932,
+      0.91926695
+    ],
+    "numericPlanJsonBytes": 12367,
+    "groups": [
+      "terrain"
+    ],
+    "allTerrainEdgeParts": true,
+    "invalidGeometry": []
+  },
+  "previous100Parts": {
+    "firstPlanPart": 9400,
+    "lastPlanPart": 9499,
+    "count": 100,
+    "styles": [
+      "grass"
+    ],
+    "sizeRanges": [
+      [
+        318.3197,
+        332.3869
+      ],
+      [
+        251.0841,
+        336.4784
+      ],
+      [
+        1.2704,
+        172.4922
+      ]
+    ],
+    "upYRange": [
+      0.76193932,
+      0.78587803
+    ],
+    "numericPlanJsonBytes": 12407
+  },
+  "pitRoadPlanParts": [
+    5902,
+    6215
+  ],
+  "pitMarkingsPlanParts": [
+    6216,
+    6454
+  ],
+  "conclusions": [
+    "The pit road and markings precede both checkpoints and are present in earlier successful prefixes.",
+    "All 100 newly added plan parts are existing terrain-edge grass geometry with valid finite sizes and rotation bases.",
+    "This bounds the observed first failed checkpoint to additions after 9500 and through 9600 objects; it does not identify the first failing count or one offending part.",
+    "Cumulative serialized save size remains a hypothesis; the private server save schema and limits are unknown."
+  ],
+  "byteCountNote": "numericPlanJsonBytes describes our plan arrays only, not the game save payload.",
+  "nextTest": "Export the original transform with recovery mode for 9499 saved track parts, then rejoin and load exactly 9500 total objects. Resume directly at plan part 9500 with fineFrom=9500 and fineEvery=10, without Repair. Maintain the 31-second shared cooldown and stop at the first failed/unknown save.",
+  "slotPersistenceNote": "A successful reply at 9500 is a live observation. The subsequent failed write does not guarantee that the slot still contains the 9500-object prefix.",
+  "reloadAttempt": {
+    "expectedLoadedObjectCount": 9500,
+    "reportedObjectCountAfterRepair": 9502,
+    "error": "Multiple matching objects; placement ownership is ambiguous",
+    "interpretation": "The attempted Repair changed the object count before stopping. Delayed replication/streaming can make an existing saved part appear after Repair has sent a new placement. The exact added object identities were not captured."
+  }
+}

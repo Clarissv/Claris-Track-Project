@@ -72,6 +72,62 @@ rejoining, since this diagnostic history lives in the current client session.
 The interval narrows where saving starts failing; it cannot establish whether
 one part, the total size, or a server storage problem caused the failure.
 
+The first reported diagnostic run successfully saved **9,500 total objects**
+and failed at the **9,600-object checkpoint**. With one existing grass plate,
+the 100 additions are plan parts **9,500–9,599**, all terrain-edge grass parts.
+Their sizes and rotation bases pass the static geometry checks; the pit road
+and markings were already included in earlier successful saves. See the
+[boundary report](save-boundary-report.json) for the assumptions and comparison.
+The next fresh run can narrow that interval with
+`EnableAutoSave(1, {every=500, fineFrom=9500, fineEvery=10})`.
+Re-arming the stopped 9,600-object build cannot test earlier counts.
+
+The attempted Repair of that loaded prefix subsequently stopped on multiple
+matching replicated objects and the user's server count became **9,502**.
+Repair can issue a placement before an existing saved object streams into
+view, so it is unsuitable for this saved-prefix diagnostic. The recovery
+workflow below bypasses the old prefix and requires the exact loaded count
+before any new placement.
+
+## Resume the known 9,500-object save directly
+
+Before rejoining, **keep the original stopped builder loaded** and export its
+original position for the saved prefix. After pushing this release, run:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/loader.lua"))("recovery", 9499)
+```
+
+`9499` is the saved **track-part count, excluding the grass plate**. This writes
+`red-bull-ring-clear-start-jakarta-checkpoint.json` in the executor's files. It
+requires `writefile` and the original captured transform, works from the
+unconfirmed stopped builder, and does not change or save game objects. Its
+prefix refers to the earlier slot you choose, not the glitched current build.
+Wait for the **Original position saved locally** message before leaving.
+It replaces the local resume checkpoint with one for this earlier prefix.
+
+Rejoin, enable build tools, and use Jakarta's UI to load the known saved slot.
+Wait for loading to finish. Then run:
+
+```lua
+local builder = loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/loader.lua"))("resume")
+assert(builder.VerifyServerCount().serverCount == 9500, "Wait for the saved slot to load exactly 9,500 objects")
+builder.EnableAutoSave(1, {every=500, fineFrom=9500, fineEvery=10})
+builder.Build()
+```
+
+Choose the autosave slot in `EnableAutoSave`; each request overwrites it. The
+loader restores the original origin, scale, catalog, and appearance, sets the
+next plan index to **9,500**, and retains an exact **9,500-object** count guard.
+Build continues with the missing suffix; it does not inspect or rebuild the
+9,499 saved track parts. Autosaves begin at **9,510 total objects** and retain
+the shared 31-second cooldown. An incorrect loaded count stops before placement.
+
+This trusts your identification of the saved slot as the original sequential
+prefix. A count alone cannot prove which track parts it contains. If the old
+builder is already gone, a previously exported matching checkpoint is needed
+to recover the original transform; a new standing position does not establish it.
+
 **Pause** can cancel a checkpoint during cooldown. If the request has already
 been sent, Pause waits for its outcome and stops before further placement.
 Build / Resume preserves a successful checkpoint. After a failure it refuses

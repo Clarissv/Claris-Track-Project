@@ -73,6 +73,20 @@ api=diagnosticBuilder();pauseReply=true;api.Build()
 assert(api.State=="paused" and #calls==2 and #attempts==1 and api.AutoSave.lastSuccess.objectCount==2,"Pause while saving must wait for the reply and retain success")
 api.Build();assert(api.State=="complete" and #calls==6,"Pause after a save must preserve placement progress")
 
+-- Reload the last saved prefix while keeping the original builder transform.
+api=diagnosticBuilder();child(builds,"Part","ExistingGrass");failAt=2;api.Build()
+assert(api.State=="save_failed" and api.AutoSave.lastSuccess.objectCount==2 and #calls==3,"Reload fixture must first stop above its last good save")
+local originalFrame=api.GetTarget(2).cf
+local loadedChildren=builds:GetChildren()
+for i=3,#loadedChildren do loadedChildren[i]:Destroy() end
+assert(api.VerifyServerCount().serverCount==2,"Loaded prefix must contain grass and its first saved track part")
+attempts,failAt={},nil
+api.EnableAutoSave(2,{every=2,fineFrom=2,fineEvery=1})
+api.Repair()
+assert(api.State=="complete" and api.ReusedCount==1 and api.SentCount==5 and #builds:GetChildren()==7,"Repair must reuse the loaded prefix and place only its missing suffix")
+assert(#attempts==5 and attempts[1].count==3 and attempts[#attempts].count==7,"Fine autosave must resume immediately above the loaded total count")
+assert((calls[4][2].Position-originalFrame.Position).Magnitude<.000001,"Repair must retain the original placement transform after slot reload")
+
 api=diagnosticBuilder()
 function saveRemote:FireServer() messages.OnClientEvent:Fire("Please, do not leave until buildings are fully saved") end
 api.Build()

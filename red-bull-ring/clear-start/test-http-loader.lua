@@ -9,6 +9,7 @@ function game:HttpGet(url)
     if url:match("/red%-bull%-ring%-builder%.lua$") then return string.dump(loadBuilder) end
     if url:match("/red%-bull%-ring%-checkpoint%.lua$") then return string.dump(checkpointBuilder) end
     if url:match("/red%-bull%-ring%-diagnose%.lua$") then return string.dump(diagnoseBuilder) end
+    if url:match("/red%-bull%-ring%-recovery%.lua$") then return string.dump(recoveryHelper) end
     if url:match("/red%-bull%-ring%-save%.lua$") then return string.dump(saveSlotHelper) end
     if url:match("/runtime%-plan%.json$") then return badPlan and "bad-json" or "fixture-json" end
     error("Unexpected GitHub URL")
@@ -82,3 +83,13 @@ reply="Your buildings were successfully saved"
 api.Build()
 assert(api.State=="complete" and #saveCalls==beforeSaves+1 and saveCalls[#saveCalls][2]==3,"Autosave mode must save the completed small build to the selected slot")
 print("PASS: explicit autosave loadstring, slot validation, defaults and final automatic save")
+
+api=fresh();pauseAfterFirst=true;api.Build()
+local oldApi=api
+local beforeHttp,beforePlacement=#httpCalls,#calls
+local recovered=loadHttpLoader("recovery",1)
+assert(recovered.nextIndex==2 and recovered.expectedServerCount==2 and _G.RedBullRingClearStartBuilder==oldApi and #calls==beforePlacement and #httpCalls==beforeHttp+2,"Recovery mode must fetch only its helper and plan, preserving the original builder")
+beforeHttp=#httpCalls
+assert(not pcall(loadHttpLoader,"recovery") and not pcall(loadHttpLoader,"recovery",0) and not pcall(loadHttpLoader,"recovery",1.5) and #httpCalls==beforeHttp,"Bad recovery arguments must fail before download")
+api=fresh();_G.RedBullRingSlotSave=nil;_G.RedBullRingSaveClock=nil
+print("PASS: recovery loadstring preserves the original builder and validates its saved-prefix argument")

@@ -45,7 +45,7 @@ if _G.RedBullRingClearStartBuilder then
     end
 end
 
-local api = { Config = CONFIG, PlaceId = TARGET_PLACE_ID, Count = #PLAN, NextIndex = restoredCheckpoint and restoredCheckpoint.nextIndex or 1, Placed = {}, SentCount = 0, ReusedCount = 0, State = "ready", Phase = "ready" }
+local api = { Config = CONFIG, PlaceId = TARGET_PLACE_ID, Count = #PLAN, NextIndex = restoredCheckpoint and restoredCheckpoint.nextIndex or 1, ExpectedServerCount = restoredCheckpoint and restoredCheckpoint.expectedServerCount or nil, Placed = {}, SentCount = 0, ReusedCount = 0, State = "ready", Phase = "ready" }
 _G.RedBullRingClearStartBuilder = api
 local preview, manifest, selected, origin, buildScale, appearance, pending, savedCamera
 local catalogCandidates, candidateIndex = {}, 0
@@ -568,7 +568,7 @@ function api.EnableAutoSave(slot,options)
     assert(slot and slot>=1 and slot<=4 and slot%1==0,"Choose an autosave slot from 1 to 4")
     options=options or {}
     local auto={slot=slot,every=options.every or 500,fineFrom=options.fineFrom or 8500,fineEvery=options.fineEvery or 100,
-        status="armed",history={},startedAt=os.clock()}
+        status="armed",history={},startedAt=os.clock(),loadedPrefixConfirmed=restoredCheckpoint and restoredCheckpoint.nextIndex-1 or 0}
     for _,key in ipairs({"every","fineFrom","fineEvery"}) do
         local value=auto[key]
         assert(type(value)=="number" and value>=1 and value<math.huge and value%1==0,"Autosave intervals must be positive integers")
@@ -607,7 +607,7 @@ local function autosaveCheckpoint()
     auto.nextObjectCount=auto.nextObjectCount or nextSaveCount(auto,api.ExpectedServerCount)
     if api.ExpectedServerCount<auto.nextObjectCount and api.NextIndex<=#PLAN then return end
     if auto.lastSuccess and auto.lastSuccess.confirmedPlanParts==confirmed then return end
-    local first=auto.lastSuccess and auto.lastSuccess.confirmedPlanParts+1 or 1
+    local first=auto.lastSuccess and auto.lastSuccess.confirmedPlanParts+1 or auto.loadedPrefixConfirmed+1
     api.Phase="saving"
     auto.status="saving"
     status(string.format("Autosave: %d objects to slot %d; placement paused for cooldown and reply",api.ExpectedServerCount,auto.slot))
