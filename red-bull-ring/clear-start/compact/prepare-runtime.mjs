@@ -38,5 +38,5 @@ const packageSource=fs.readFileSync(new URL('make-package.mjs',parent),'utf8')
   .replaceAll("'../render.mjs'","'../../render.mjs'")
   .replaceAll('/main/red-bull-ring/clear-start/releases/','/main/red-bull-ring/clear-start/compact/releases/')
   .replaceAll('nonCollidingPartIndices,startDomain','nonCollidingPartIndices,startDomain,compactTerrain');
-fs.writeFileSync(new URL('make-package.mjs',here),packageSource);
+fs.writeFileSync(new URL('make-package.mjs',here),packageSource.replace('const a=plan.meta.placementAnchor.position,grass=[a[0],-.05,a[2],400,.1,400,5,1,0,0,0,1,0];','const a=plan.meta.placementAnchor.position,angle=plan.meta.startDomain.yawRadians??0,grass=[a[0],-.05,a[2],400,.1,400,5,Math.cos(angle),0,Math.sin(angle),0,1,0];'));
 console.log('Prepared compact builder, separate globals/checkpoints, shared save cooldown, and pinned release packaging.');

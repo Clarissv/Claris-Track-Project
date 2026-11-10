@@ -1,25 +1,26 @@
 # Red Bull Ring with compact terrain
 
-**8,293 placed parts; 8,294 total with one existing grass plate.** This pit and
-road revision uses **324 fewer parts** than the preceding smooth compact
+**8,173 placed parts; 8,174 total with one existing grass plate.** This pit and
+road revision uses **444 fewer parts** than the preceding smooth compact
 version, and 1,330 fewer than the original clear-start build. The horizontal
 racing layout, vehicle scale and clear starting position are preserved.
 
-The pit lane is now **18 studs wide**. The building portion of the pit straight
-has at least a **25-stud gap** from the racing road; the checked range is
-25.49–32.01 studs. Its entry retains the longer native route. A gradual
-transition after the building straight rejoins the rounded exit, keeping the
-exit clear of the racing road until its intended merge. Grass follows the
-complete pit route for 24 studs on both sides, including the entry. Kerbs are
-trimmed at the pit opening instead of dropping whole red/white stripes.
+The pit lane is **18 studs wide**, with a checked building gap of
+**25.50?32.00 studs**. One tangent-matched entry curve joins a continuous
+straight; one 110-stud-radius turn leaves it. The small sideways bends at both
+ends are removed. The pit shares the racing corner's plane through its exit,
+and grass follows its whole route for 24 studs on both sides. The empty
+400?400 starting square is aligned with the pit straight, keeping its original
+centre. Kerbs are clipped at the pit openings and adjacent clipping cells are
+merged to avoid unnecessary pieces.
 
 The road's height and banking are smoothed over longer distances while
 retaining 250.72 studs of elevation change. Asphalt uses 2,687 pieces instead
 of 3,181. Neighbouring racing-road joints stay below 0.006 studs and 0.061
 degrees of pitch change. Pit joints stay below 0.006 studs. A geometric chassis
 check uses a 16-stud wheelbase with four studs of overhang at each end: the
-largest rise under the wheelbase is below 0.005 studs, and under the nose/tail
-below 0.011 studs. These checks cannot establish live suspension behaviour.
+largest rise under the wheelbase is below 0.012 studs, and under the nose/tail
+below 0.018 studs. These checks cannot establish live suspension behaviour.
 The 635 runoff and 197 gravel pieces follow the revised road height.
 
 Grass follows the road's height and crossfall for at least 48 studs on both
@@ -50,8 +51,8 @@ Push the prepared files before using the new GitHub loader:
 
 ```powershell
 cd "F:\VSCode\Luau\Claris Track Project"
-git add -- README.md red-bull-ring/bulk-terrain.mjs red-bull-ring/compile-track.mjs red-bull-ring/pit-layout.mjs red-bull-ring/terrain.mjs red-bull-ring/track-tidy.mjs red-bull-ring/clear-start/compact
-git commit -m "Widen Red Bull Ring pit and smooth road grades"
+git add -- README.md package.json test-project.mjs test-loaders.ps1 red-bull-ring/compile-track.mjs red-bull-ring/pit-layout.mjs red-bull-ring/track-tidy.mjs red-bull-ring/clear-start/domain.mjs red-bull-ring/clear-start/test-domain.mjs red-bull-ring/clear-start/compact
+git commit -m "Simplify Red Bull Ring pit and fit GLB barriers"
 git push origin main
 ```
 
@@ -66,13 +67,13 @@ Use **Inspect**, **Preview**, then **Build / Resume**. This arms saves to your
 chosen slot 3 without starting placement automatically. Each checkpoint
 overwrites slot 3. Autosave pauses placement, waits 31 seconds after the prior
 save finishes, saves every 500 objects and every 100 from 8,500, then saves the
-complete **8,294-object** build. A failure or missing reply stops placement.
+complete **8,174-object** build. A failure or missing reply stops placement.
 
 The paused 9,530-object build and its old checkpoints use different terrain.
 Build this version in a fresh server; loading its panel alone does not delete
 the old build. It rejects placement if existing objects plus the compact
 remainder would reach 9,000 total objects. Additional placed objects consume
-the 705-object margin beneath that target, so start with just the grass plate.
+the 825-object margin beneath that target, so start with just the grass plate.
 
 This update also needs a fresh build if you already built the preceding
 compact geometry. The pinned [8,618-object smooth-shoulder loader](releases/f275f4b14568e3c8fa70/loader.lua)

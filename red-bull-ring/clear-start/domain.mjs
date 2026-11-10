@@ -9,11 +9,12 @@ export function footprint(part){
   return [...lower,...half.slice(0,-1)];
 }
 export function intersectsDomain(part,domain){
-  const poly=footprint(part),[x,z]=domain.center,r=domain.halfSize+(domain.guard??0),rect=[[x-r,z-r],[x+r,z-r],[x+r,z+r],[x-r,z+r]],axes=[[1,0],[0,1]];
+  const poly=footprint(part),rect=domainCorners(domain),angle=domain.yawRadians??0,axes=[[Math.cos(angle),Math.sin(angle)],[-Math.sin(angle),Math.cos(angle)]];
   for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length];axes.push([b[1]-a[1],a[0]-b[0]]);}
   for(const axis of axes){const a=poly.map(p=>p[0]*axis[0]+p[1]*axis[1]),b=rect.map(p=>p[0]*axis[0]+p[1]*axis[1]);if(Math.max(...a)<Math.min(...b)-1e-7||Math.max(...b)<Math.min(...a)-1e-7)return false;}
   return true;
 }
+export function domainCorners(domain){const [x,z]=domain.center,r=domain.halfSize+(domain.guard??0),a=domain.yawRadians??0,c=Math.cos(a),s=Math.sin(a);return [[-r,-r],[r,-r],[r,r],[-r,r]].map(([u,v])=>[x+c*u-s*v,z+s*u+c*v]);}
 export function distanceToPart(part,point){
   const poly=footprint(part),probe={center:point,halfSize:0};if(intersectsDomain(part,probe))return 0;
   return Math.min(...poly.map((a,i)=>{const b=poly[(i+1)%poly.length],dx=b[0]-a[0],dz=b[1]-a[1],t=Math.max(0,Math.min(1,((point[0]-a[0])*dx+(point[1]-a[1])*dz)/(dx*dx+dz*dz)));return Math.hypot(point[0]-a[0]-t*dx,point[1]-a[1]-t*dz);}));
@@ -32,7 +33,7 @@ export function carveTerrain(part,domain){
   // includes every potentially intersecting point, even a buried bottom
   // corner of a tall tilted solid. Four broad remnants keep clean straight
   // edges instead of making hundreds of little blocks around the opening.
-  for(const q of [[x-r,z-r],[x+r,z-r],[x+r,z+r],[x-r,z+r]])for(const t of [-part[4]/2,part[4]/2]){
+  for(const q of domainCorners(domain))for(const t of [-part[4]/2,part[4]/2]){
     const dx=q[0]-part[0]-U[0]*t,dz=q[1]-part[2]-U[2]*t;local.push([(dx*B[2]-dz*B[0])/det,(R[0]*dz-R[2]*dx)/det]);
   }
   const left=-part[3]/2,right=part[3]/2,front=-part[5]/2,back=part[5]/2,l=Math.max(left,Math.min(...local.map(p=>p[0]))),h=Math.min(right,Math.max(...local.map(p=>p[0]))),f=Math.max(front,Math.min(...local.map(p=>p[1]))),b=Math.min(back,Math.max(...local.map(p=>p[1]))),pieces=[];

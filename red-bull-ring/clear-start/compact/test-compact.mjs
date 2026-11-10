@@ -67,11 +67,23 @@ test('the pit building straight reserves at least 25 studs beside an 18-stud lan
   assert.equal(plan.meta.pitLayout.requestedGapStuds,25);
   assert.equal(plan.meta.compactTerrain.drivingSettings.pitSeparation,25);
 });
+test('the pit has one turn at each end with a continuous straight and no sideways return',()=>{
+  const l=plan.meta.pitLayout,points=plan.meta.pitPoints;
+  assert.equal(l.singleTurns,true);
+  const normal=[-l.straightDirection[1],l.straightDirection[0]];
+  for(let i=l.straightStartIndex;i<=l.exitStartIndex;i++)assert(Math.abs((points[i].pos[0]-l.straightOrigin[0])*normal[0]+(points[i].pos[2]-l.straightOrigin[1])*normal[1])<1e-7);
+  for(const [start,end] of [[l.entryArcStartIndex,l.straightStartIndex],[l.exitStartIndex,l.exitArcEndIndex]]){
+    let turns=0;
+    for(let i=start+1;i<end;i++){const a=points[i-1].pos,b=points[i].pos,c=points[i+1].pos,u=[b[0]-a[0],b[2]-a[2]],v=[c[0]-b[0],c[2]-b[2]],angle=Math.atan2(u[0]*v[1]-u[1]*v[0],u[0]*v[0]+u[1]*v[1]);assert(angle>=-1e-6,'An extra reverse bend remains');turns+=angle;}
+    assert(turns>1&&turns<2,'Expected one continuous turn');
+  }
+  assert.deepEqual(points[0].pos.filter((_,i)=>i!==1),l.entry);assert.deepEqual(points.at(-1).pos.filter((_,i)=>i!==1),l.exit);
+});
 test('road fitting reduces joints and chassis clearance bumps while retaining hills',()=>{
   assert.deepEqual(auditLowClearance(plan),plan.meta.lowClearanceAudit);
-  const audit=plan.meta.lowClearanceAudit,old=auditLowClearance(source);
+  const audit=plan.meta.lowClearanceAudit,main=auditLowClearance(plan,{kinds:['main']}),old=auditLowClearance(source,{kinds:['main']});
   assert.equal(audit.missing,0);assert(audit.maxCrestRiseStuds<.015);assert(audit.maxOverhangRiseStuds<.02);
-  assert(audit.maxCrestRiseStuds<old.maxCrestRiseStuds);assert(audit.maxOverhangRiseStuds<old.maxOverhangRiseStuds);
+  assert(main.maxCrestRiseStuds<old.maxCrestRiseStuds);assert(main.maxOverhangRiseStuds<old.maxOverhangRiseStuds);
   assert(plan.meta.surfaceSmoothing.roadJoins.maxOverlapStep<.0061);
   assert(plan.meta.surfaceSmoothing.roadJoins.maxPitchChangeDegrees<.062);
   assert(plan.meta.groups.asphalt.length<source.meta.groups.asphalt.length);

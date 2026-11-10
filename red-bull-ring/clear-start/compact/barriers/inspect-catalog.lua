@@ -1,4 +1,4 @@
--- Read-only Jakarta barrier inspector. Hold a catalog item without placing it; press I.
+-- Read-only Jakarta barrier inspector. Choose an item in Build Tools; info prints automatically.
 -- Reports catalog/template/material assets; never places, edits or saves game objects.
 local Players=game:GetService("Players")
 local Storage=game:GetService("ReplicatedStorage")
@@ -42,7 +42,12 @@ end
 local function line(message) print("[Barrier inspector] "..message) end
 function api.Scan()
     if entries then return entries end
-    assert(not scanning,"Catalog query is already running")
+    if scanning then
+        local deadline=os.clock()+12
+        while scanning and not entries and os.clock()<deadline do task.wait(.05) end
+        assert(entries,"Catalog query did not complete; select the item again")
+        return entries
+    end
     local network=Storage:FindFirstChild("NetworkContainer")
     local functions=network and network:FindFirstChild("RemoteFunctions")
     local endpoint=functions and functions:FindFirstChild("GetCatalogManifest")
@@ -55,7 +60,7 @@ function api.Scan()
     task.spawn(function() ok,result=pcall(function() return endpoint:InvokeServer() end);done=true end)
     local deadline=os.clock()+12
     while not done and os.clock()<deadline do task.wait(.05) end
-    assert(done and ok and type(result)=="table","Catalog query failed or timed out; reload inspector before trying again")
+    if not (done and ok and type(result)=="table") then scanning=false;error("Catalog query failed or timed out; select the item again") end
     local out={}
     for _,entry in ipairs(result) do if type(entry)=="table" and type(entry.name)=="string" and type(entry.guid)=="string" then
         local template=folder:FindFirstChild(entry.guid,true)
@@ -113,71 +118,85 @@ function api.Inspect(target,source)
     if type(writefile)=="function" then local ok,err=pcall(writefile,"red-bull-ring-barrier-inspection.json",json);line(ok and "Exported red-bull-ring-barrier-inspection.json" or "Export unavailable: "..tostring(err)) end
     return report
 end
-local function previewRoot(part,root)
-    local found,object=nil,part
-    while object and object~=root do
-        local name=string.lower(object.Name)
-        -- Exclude our complete local circuit previews from held-item capture.
-        if name:find("redbullring",1,true) and name:find("preview",1,true) then return nil,true end
-        if name:find("preview",1,true) or name:find("ghost",1,true) or name:find("holding",1,true) then found=object end
-        object=object.Parent
-    end
-    return found,false
+-- Jakarta PlaceTool parents the GUID-named clone directly to workspace.Hover.
+-- CatalogBuilder names cards <catalog name>Button, with a TextButton child.
+local watchConnections,watchedCards,watchedHovers={}, {}, {}
+local watching=false
+local function firstPart(root)
+    if root:IsA("BasePart") then return root end
+    if root:IsA("Model") and root.PrimaryPart then return root.PrimaryPart end
+    return parts(root)[1]
 end
-function api.Preview(index)
-    local catalog=api.Scan()
-    local folder=workspace:FindFirstChild("EditableBuilds")
-    local roots={workspace}
-    local gui=player:FindFirstChild("PlayerGui")
-    if gui then roots[#roots+1]=gui end
-    local candidates,byRoot={},{}
-    for _,root in ipairs(roots) do for _,part in ipairs(root:GetDescendants()) do
-        if part:IsA("BasePart") and not (folder and part:IsDescendantOf(folder)) and not (player.Character and part:IsDescendantOf(player.Character)) then
-            local holder,excluded=previewRoot(part,root)
-            if not excluded and property(part,"Transparency")~=1 and (holder or (root==workspace and part.CanCollide==false and part.Anchored==true)) then
-                local p,matchesCatalog=record(part),false
-                for _,entry in ipairs(catalog) do for _,template in ipairs(entry.parts) do
-                    if p.class==template.class and p.shape==template.shape and
-                        ((p.materialVariant~="" and p.material==template.material and p.materialVariant==template.materialVariant) or
-                        (#p.assets>0 and assetKey(p)==assetKey(template))) then matchesCatalog=true end
-                end end
-                -- Named preview roots are explicit evidence. Unnamed workspace
-                -- ghosts need a catalog appearance match and non-colliding,
-                -- anchored geometry. GUI catalog icons are never a fallback.
-                if holder or (root==workspace and matchesCatalog and part.CanCollide==false and part.Anchored==true) then
-                    local score=(holder and 4 or 0)+(matchesCatalog and 4 or 0)
-                    local group=holder or part
-                    local existing=byRoot[group]
-                    if not existing then existing={part=part,root=group,score=score};byRoot[group]=existing;candidates[#candidates+1]=existing
-                    elseif score>existing.score then existing.part,existing.score,existing.ambiguous=part,score,nil
-                    elseif score==existing.score then
-                        local a,b=record(existing.part),p
-                        if a.material~=b.material or a.materialVariant~=b.materialVariant or assetKey(a)~=assetKey(b) then existing.ambiguous=true end
-                    end
-                end
-            end
+function api.Selected()
+    local hover=workspace:FindFirstChild("Hover")
+    if not hover then line("Open Build Tools first; workspace.Hover is missing");return nil,"none" end
+    local objects={}
+    for _,object in ipairs(hover:GetChildren()) do if object:IsA("BasePart") or object:IsA("Model") then objects[#objects+1]=object end end
+    if #objects==0 then line("Choose the steel or concrete item in the Build Tools catalog; no placement is needed");return nil,"none" end
+    if #objects~=1 then
+        for i,object in ipairs(objects) do line("HOVER "..i..": "..object:GetFullName()) end
+        line("Multiple held objects found; inspect the intended Hover child explicitly")
+        return nil,"ambiguous"
+    end
+    local target=assert(firstPart(objects[1]),"Held catalog item has no BasePart")
+    return api.Inspect(target,"Build Tools Hover selection")
+end
+api.Preview=api.Selected
+api.Capture=api.Selected
+function api.CatalogItem(name)
+    local found
+    for _,entry in ipairs(api.Scan()) do if entry.name==name then found=entry;break end end
+    assert(found,"Catalog item was not found: "..tostring(name))
+    local folder=Storage:FindFirstChild("PlacementObject")
+    folder=folder and folder:FindFirstChild("Object")
+    local template=folder and folder:FindFirstChild(found.guid,true)
+    assert(template,"Catalog template is unavailable: "..name)
+    return api.Inspect(assert(firstPart(template),"Catalog template has no BasePart"),"Build Tools catalog UI click")
+end
+local function safely(fn,...)
+    local ok,result=pcall(fn,...)
+    if not ok then line(tostring(result)) end
+    return ok,result
+end
+local function watchHover(hover)
+    if watchedHovers[hover] then return end
+    watchedHovers[hover]=true
+    watchConnections[#watchConnections+1]=hover.ChildAdded:Connect(function(object)
+        if object:IsA("BasePart") or object:IsA("Model") then
+            local target=firstPart(object)
+            if target then safely(api.Inspect,target,"Build Tools Hover selection") end
         end
-    end end
-    table.sort(candidates,function(a,b) if a.score~=b.score then return a.score>b.score end;return a.part:GetFullName()<b.part:GetFullName() end)
-    api.PreviewCandidates=candidates
-    if index~=nil then
-        assert(type(index)=="number" and index%1==0 and candidates[index],"Choose a listed preview number")
-        assert(not candidates[index].ambiguous,"Preview contains different part appearances; use Inspect with the exact part")
-        return api.Inspect(candidates[index].part,"held preview")
-    end
-    if #candidates==1 and not candidates[1].ambiguous then return api.Inspect(candidates[1].part,"held preview") end
-    for i,candidate in ipairs(candidates) do
-        local p=record(candidate.part)
-        line("PREVIEW "..i..": "..candidate.part:GetFullName().." | Material="..p.material.." | MaterialVariant="..p.materialVariant..(candidate.ambiguous and " | multiple appearances in this preview" or ""))
-    end
-    if #candidates==0 then line("No held preview found. Select the barrier and move its preview into the world, then try again.");return nil,"none" end
-    line("Several possible previews found. Run _G.RedBullRingBarrierInspector.Preview(number) for the intended one.")
-    return nil,"ambiguous"
+    end)
 end
-function api.Capture()
-    local report,reason=api.Preview()
-    if reason=="none" then return api.Inspect(player:GetMouse().Target) end
-    return report
+local function watchCard(object)
+    if watchedCards[object] or not object:IsA("TextButton") or object.Name~="TextButton" then return end
+    local card=object.Parent
+    local name=card and card.Name:match("^(.*)Button$")
+    if not name or name=="" then return end
+    local ancestor=card
+    while ancestor and ancestor.Name~="AdvanceBuildTools" do ancestor=ancestor.Parent end
+    if not ancestor then return end
+    watchedCards[object]=true
+    watchConnections[#watchConnections+1]=object.Activated:Connect(function()
+        -- Read the selected card's template even if its held clone has not
+        -- appeared yet. Do not invoke the game's createPreview/placeItem.
+        safely(api.CatalogItem,name)
+    end)
+end
+function api.Watch()
+    if watching then return api end
+    watching=true
+    local hover=workspace:FindFirstChild("Hover")
+    if hover then watchHover(hover) end
+    watchConnections[#watchConnections+1]=workspace.ChildAdded:Connect(function(object) if object.Name=="Hover" then watchHover(object) end end)
+    local gui=player:FindFirstChild("PlayerGui")
+    if gui then
+        for _,object in ipairs(gui:GetDescendants()) do watchCard(object) end
+        watchConnections[#watchConnections+1]=gui.DescendantAdded:Connect(watchCard)
+    end
+    line("Watching Build Tools catalog clicks and workspace.Hover; selecting an item prints its info automatically")
+    if hover then for _,object in ipairs(hover:GetChildren()) do if firstPart(object) then safely(api.Inspect,firstPart(object),"Build Tools Hover selection") end end end
+    return api
 end
 function api.List(filter)
     filter=string.lower(filter or "others")
@@ -185,12 +204,16 @@ function api.List(filter)
         for _,p in ipairs(entry.parts) do line("CATALOG: "..entry.name.." | Material="..p.material.." | Variant="..p.materialVariant.." | Class="..p.class.." | Assets="..#p.assets) end
     end end
 end
-function api.Unload() if connection then connection:Disconnect() end;_G.RedBullRingBarrierInspector=nil end
+function api.Unload()
+    if connection then connection:Disconnect() end
+    for _,value in ipairs(watchConnections) do value:Disconnect() end
+    watching=false
+    _G.RedBullRingBarrierInspector=nil
+end
 connection=Input.InputBegan:Connect(function(input,processed)
     if processed or Input:GetFocusedTextBox() or input.KeyCode~=Enum.KeyCode.I then return end
-    local ok,err=pcall(api.Capture)
-    if not ok then line(tostring(err)) end
+    safely(api.Selected)
 end)
-line("Ready. Hold the steel barrier in Build Tools without placing it, then press I or run _G.RedBullRingBarrierInspector.Preview(). Repeat for striped concrete; paste the Material / Catalog lines.")
-line("If a sample cannot be identified, run _G.RedBullRingBarrierInspector.List() to list the Others catalog.")
+api.Watch()
+line("Choose the steel item in the Build Tools UI, then the striped concrete. Copy their Material / MaterialVariant / Catalog output from the console")
 return api

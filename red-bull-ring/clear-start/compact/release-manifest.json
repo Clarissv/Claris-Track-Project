@@ -1,43 +1,43 @@
 {
   "format": "red-bull-ring-github-release-v1",
-  "version": "66f1e928fd2d56c70976",
-  "partCount": 8293,
-  "totalWithExistingGrass": 8294,
+  "version": "f78205c653c1bc354f82",
+  "partCount": 8173,
+  "totalWithExistingGrass": 8174,
   "files": [
     {
-      "path": "releases/66f1e928fd2d56c70976/red-bull-ring-builder.lua",
+      "path": "releases/f78205c653c1bc354f82/red-bull-ring-builder.lua",
       "bytes": 62009,
-      "sha256": "7402c61aa3d234b7d3c4cb5750ae6c54a6c372672da29ea6994c3a0b78f6ed23"
+      "sha256": "9168f4c29aef63aba57ebfcd00704addb80ff078072434e5e9b2c9ed769fef16"
     },
     {
-      "path": "releases/66f1e928fd2d56c70976/runtime-plan.json",
-      "bytes": 1036393,
-      "sha256": "fe743c5d9d77fbe67135022423f1d7ebb374ce619c96b148fce763dcd9393302"
+      "path": "releases/f78205c653c1bc354f82/runtime-plan.json",
+      "bytes": 1023213,
+      "sha256": "009185c51b6342612e2acb120150953f9b60e757c62809a9a373b0e5631abe0e"
     },
     {
-      "path": "releases/66f1e928fd2d56c70976/red-bull-ring-save.lua",
+      "path": "releases/f78205c653c1bc354f82/red-bull-ring-save.lua",
       "bytes": 6165,
       "sha256": "c370a30e3123ab62d2eab479cb90587341cdf254f572c09f1d5bfa21fd74bec6"
     },
     {
-      "path": "releases/66f1e928fd2d56c70976/red-bull-ring-recovery.lua",
+      "path": "releases/f78205c653c1bc354f82/red-bull-ring-recovery.lua",
       "bytes": 3310,
       "sha256": "745a2ce9bd536d4c0476476840157b82a022f92d610cb959bb26455e46ddeed1"
     },
     {
-      "path": "releases/66f1e928fd2d56c70976/red-bull-ring-checkpoint.lua",
+      "path": "releases/f78205c653c1bc354f82/red-bull-ring-checkpoint.lua",
       "bytes": 3904,
       "sha256": "4211fa05ff470a975a86c4dbecc9d46250d5fff1556541941d5d97a127470fe5"
     },
     {
-      "path": "releases/66f1e928fd2d56c70976/red-bull-ring-diagnose.lua",
+      "path": "releases/f78205c653c1bc354f82/red-bull-ring-diagnose.lua",
       "bytes": 5173,
       "sha256": "fc65806cdce927abe7b8d779bf5aa7b5bba2e25355d3cf3067b270d86c2f89c3"
     },
     {
-      "path": "releases/66f1e928fd2d56c70976/loader.lua",
+      "path": "releases/f78205c653c1bc354f82/loader.lua",
       "bytes": 2741,
-      "sha256": "7cb7fd75607258548f3fe5d96ffb8356c309003bb7d2b3fb0f76b4c4693abda8"
+      "sha256": "ec9aa5bac3c8c802d3c18e91ca40a6a63c6c1c8e36e6157f4aaa83430901d4a8"
     }
   ]
 }

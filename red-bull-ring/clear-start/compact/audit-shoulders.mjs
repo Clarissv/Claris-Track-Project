@@ -59,7 +59,7 @@ export function auditPitShoulders(plan){
 }
 export function auditPitGap(plan){
   const line=plan.centerline,tree=new KDTree(line.slice(0,-1).map((p,i)=>[p[0],p[2],i])),gaps=[];
-  const start=plan.meta.pitLayout.straightStartIndex,end=plan.meta.pitLayout.exitApproachStartIndex??plan.meta.pitLayout.exitStartIndex;
+  const start=plan.meta.pitLayout.buildingStartIndex??plan.meta.pitLayout.straightStartIndex,end=plan.meta.pitLayout.buildingEndIndex??plan.meta.pitLayout.exitApproachStartIndex??plan.meta.pitLayout.exitStartIndex;
   for(let i=start;i<=end;i++){
     const p=plan.meta.pitPoints[i],j=tree.nearest([p.pos[0],p.pos[2]]).point[2],q=line[j],a=line[Math.max(0,j-1)],b=line[Math.min(line.length-1,j+1)],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz);
     const offset=((p.pos[0]-q[0])*dz-(p.pos[2]-q[2])*dx)/length;

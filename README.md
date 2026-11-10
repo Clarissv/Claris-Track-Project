@@ -25,7 +25,7 @@ red-bull-ring/
 | Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
 | Red Bull Ring with terrain (1.5× layout) | 9,629 | [Red Bull Ring](red-bull-ring/README.md) |
 | Red Bull Ring with a clear starting area | 9,623 | [Clear start](red-bull-ring/clear-start/README.md) |
-| Red Bull Ring with smooth roads, an 18-stud pit lane, compact terrain and a clear starting area | 8,293 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
+| Red Bull Ring with smooth roads, an 18-stud pit lane, compact terrain and a clear starting area | 8,173 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint
@@ -76,16 +76,24 @@ Red Bull Ring with compact terrain, autosaving to slot 3:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/loader.lua"))("autosave", 3)
 ```
 
-This version needs a fresh build and contains **8,294 objects including grass**.
+This version needs a fresh build and contains **8,174 objects including grass**.
 It retains the horizontal racing layout, smooths the road and grass/runoff
 transitions, and widens the pit to 18 studs with a minimum 25-stud building gap.
-It uses 324 fewer parts than the preceding smooth compact version. See its
+It removes the extra pit bends and uses 120 fewer parts than the previous compact road. See its
 instructions before replacing a saved slot.
 
 ## Checks and maintenance
 
+The compact Red Bull Ring also has a [full-circuit barrier add-on](red-bull-ring/clear-start/compact/barriers/README.md):
+**747 additional parts, 8,921 total objects including grass**, following the GLB steel and concrete paths. The pit straight stays open. Add it to the
+completed current compact road; it inherits that road's transform.
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/loader.lua"))("autosave", 3)
+```
+
 From the repository root, run `npm test` for geometry, release hashes and
-repository layout checks. Run `npm run test:lua` for all seven builders and their
+repository layout checks. Run `npm run test:lua` for all eight builders and their
 HTTP loaders using the existing VLC Lua library, or pass `-LuaLibrary` to
 `test-loaders.ps1`.
 

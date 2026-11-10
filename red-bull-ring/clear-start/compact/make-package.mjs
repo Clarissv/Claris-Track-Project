@@ -31,6 +31,6 @@ files.push({path:`releases/${version}/loader.lua`,bytes:loader.length,sha256:dig
 fs.writeFileSync(path.join(here,'release-manifest.json'),JSON.stringify({format:'red-bull-ring-github-release-v1',version,partCount,totalWithExistingGrass:partCount+1,files},null,2)+'\n');
 writeArtifacts(here,plan);
 const {render}=await import('../../render.mjs');
-const a=plan.meta.placementAnchor.position,grass=[a[0],-.05,a[2],400,.1,400,5,1,0,0,0,1,0];
+const a=plan.meta.placementAnchor.position,angle=plan.meta.startDomain.yawRadians??0,grass=[a[0],-.05,a[2],400,.1,400,5,Math.cos(angle),0,Math.sin(angle),0,1,0];
 fs.writeFileSync(path.join(here,'build-domain.png'),render({...plan,parts:[...plan.parts,grass]},1300,900,{target:[a[0],10,a[2]],span:1100}));
 console.log(JSON.stringify({version,partCount,totalWithExistingGrass:partCount+1},null,2));

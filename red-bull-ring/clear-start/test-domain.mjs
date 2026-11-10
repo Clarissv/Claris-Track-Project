@@ -44,6 +44,12 @@ test('the cut handles a flat foundation and the buried face of a tilted solid',(
   const kept=carveTerrain(tilted,hole);assert(kept.length>0&&kept.length<=4);assert(kept.every(p=>!intersectsDomain(p,{...hole,guard:0})));
   const basis=boxBasis(tilted);for(const p of kept)for(const corner of boxCorners(p)){const delta=corner.map((v,k)=>v-tilted[k]);assert(Math.abs(dot(delta,basis.right))<=tilted[3]/2+1e-7);assert(Math.abs(dot(delta,basis.up))<=tilted[4]/2+1e-7);assert(Math.abs(dot(delta,basis.back))<=tilted[5]/2+1e-7);}
 });
+test('a rotated clear square keeps all carved remnants outside its full vertical footprint',()=>{
+  const domain={center:[12,-8],halfSize:50,guard:.15,yawRadians:-.28},part=[0,1,0,300,2,300,5,1,0,0,0,1,0];
+  assert(intersectsDomain(part,domain));
+  const pieces=carveTerrain(part,domain);assert(pieces.length===4);for(const p of pieces)assert(!intersectsDomain(p,{...domain,guard:0}));
+  assert(!intersectsDomain([95,1,0,10,2,10,5,1,0,0,0,1,0],domain));
+});
 test('the variant loader pins matching assets and uses a separate builder and checkpoint',()=>{
   const manifest=read('release-manifest.json'),runtime=read(`releases/${manifest.version}/runtime-plan.json`);assert.deepEqual(runtime.parts,plan.parts);assert.deepEqual(runtime.meta.startDomain,domain);
   for(const f of manifest.files){const bytes=fs.readFileSync(new URL(f.path,import.meta.url));assert.equal(bytes.length,f.bytes);assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),f.sha256);}

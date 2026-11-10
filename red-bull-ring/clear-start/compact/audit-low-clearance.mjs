@@ -3,10 +3,11 @@ import {collisionSampler} from '../../surface-audit.mjs';
 // Compare the actual road with a rigid chassis supported by two tyre contacts.
 // Sample a straight wheelbase chord in world space, including nose/tail
 // overhang. A grade along a curved route alone is not a chassis bump.
-export function auditLowClearance(plan,{wheelbase=16,overhang=4,stride=4,spacing=1,offsets=[-3,0,3]}={}){
+export function auditLowClearance(plan,{wheelbase=16,overhang=4,stride=4,spacing=1,offsets=[-3,0,3],kinds=['main','pit']}={}){
   const surface=collisionSampler([...plan.meta.groups.asphalt,...plan.meta.groups.pitLane].map(i=>plan.parts[i]));
   let samples=0,missing=0,maxCrestRise=0,maxOverhangRise=0,worstCrest=null,worstOverhang=null;
   for(const [kind,line,closed] of [['main',plan.centerline,true],['pit',plan.meta.pitPoints.map(p=>[...p.pos,p.wr,p.wl,p.s]),false]]){
+    if(!kinds.includes(kind))continue;
     const distances=[0];for(let i=1;i<line.length;i++)distances.push(distances.at(-1)+Math.hypot(line[i][0]-line[i-1][0],line[i][2]-line[i-1][2]));
     const length=distances.at(-1);
     const at=(s,offset)=>{

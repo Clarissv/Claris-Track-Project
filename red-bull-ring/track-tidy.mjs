@@ -52,7 +52,7 @@ export function addContinuousKerbs(points,ranges,pitParts,settings,push){
         part[5]+=.75;
         if(pitParts.some(p=>overlapVertices(part,p).length)){
           if(!settings.pitKerbTrimResolutionStuds)continue;
-          for(const piece of trimKerbAtPit(part,pitParts,settings.pitKerbTrimResolutionStuds))spans.push({index:push('curbs',piece),side,start:start+a+u,end:start+a+v});
+          for(const piece of trimKerbAtPit(part,pitParts,settings.pitKerbTrimResolutionStuds,settings.pitKerbMerge??false))spans.push({index:push('curbs',piece),side,start:start+a+u,end:start+a+v});
         }else spans.push({index:push('curbs',part),side,start:start+a+u,end:start+a+v});
       }
       a=b;
@@ -64,7 +64,7 @@ export function addContinuousKerbs(points,ranges,pitParts,settings,push){
 
 // Retain the portions of a stripe outside the pit. Removing an entire
 // overlapping stripe leaves a visible kerb gap well beyond the pit opening.
-export function trimKerbAtPit(part,pitParts,resolution=.06){
+export function trimKerbAtPit(part,pitParts,resolution=.06,merge=false){
   const nearby=pitParts.filter(p=>overlapVertices(part,p).length),pieces=[];
   const split=p=>{
     if(!nearby.some(q=>overlapVertices(p,q).length)){pieces.push(p);return;}
@@ -77,7 +77,16 @@ export function trimKerbAtPit(part,pitParts,resolution=.06){
       split(piece);
     }
   };
-  split([...part]);return pieces;
+  split([...part]);
+  if(!merge)return pieces;
+  // Combine adjacent cells back into maximal rectangular strips. This keeps
+  // fine clipping at pit openings without hundreds of spare quadtree cells.
+  const basis=boxBasis(part),local=p=>{const d=p.slice(0,3).map((v,k)=>v-part[k]),x=d.reduce((s,v,k)=>s+v*basis.right[k],0),z=d.reduce((s,v,k)=>s+v*basis.back[k],0);return [x-p[3]/2,x+p[3]/2,z-p[5]/2,z+p[5]/2];};
+  let rectangles=pieces.map(local),changed=true;
+  while(changed){changed=false;for(const axis of [0,2]){const other=2-axis,groups=new Map();for(const r of rectangles){const key=[r[other],r[other+1]].map(v=>v.toFixed(7)).join(':');if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r);}const next=[];
+    for(const row of groups.values()){row.sort((a,b)=>a[axis]-b[axis]);let active=[...row[0]];for(const r of row.slice(1)){if(Math.abs(active[axis+1]-r[axis])<1e-7){active[axis+1]=r[axis+1];changed=true;}else{next.push(active);active=[...r];}}next.push(active);}rectangles=next;
+  }}
+  return rectangles.map(r=>{const p=[...part],x=(r[0]+r[1])/2,z=(r[2]+r[3])/2;for(let k=0;k<3;k++)p[k]+=x*basis.right[k]+z*basis.back[k];p[3]=r[1]-r[0];p[5]=r[3]-r[2];return p;});
 }
 
 export function addCornerAprons(points,aprons,scale,push){

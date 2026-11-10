@@ -1,0 +1,30 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import {render} from '../../../render.mjs';
+import {readBase} from './generate.mjs';
+const here=new URL('./',import.meta.url),read=n=>fs.readFileSync(new URL(n,here),'utf8');
+const plan=JSON.parse(read('barrier-plan.json'));
+const builder=read('builder-template.luau').replace('-- GENERATED_DATA',()=>read('plan-loader.luau'));
+fs.writeFileSync(new URL('red-bull-ring-builder.lua',here),builder);
+const {chains,audit,groups,...runtimeMeta}=plan.meta;
+const assets={'red-bull-ring-builder.lua':Buffer.from(builder),'runtime-plan.json':Buffer.from(JSON.stringify({meta:runtimeMeta,parts:plan.parts}))};
+for(const n of ['red-bull-ring-save.lua','red-bull-ring-checkpoint.lua','red-bull-ring-diagnose.lua'])assets[n]=Buffer.from(read(n));
+const sha=b=>crypto.createHash('sha256').update(b).digest('hex'),hash=crypto.createHash('sha256');
+for(const [name,body] of Object.entries(assets))hash.update(name).update('\0').update(body);
+const version=hash.digest('hex').slice(0,20),release=new URL(`releases/${version}/`,here);fs.mkdirSync(release,{recursive:true});
+const files=[];for(const [name,body] of Object.entries(assets)){fs.writeFileSync(new URL(name,release),body);files.push({path:`releases/${version}/${name}`,bytes:body.length,sha256:sha(body)});}
+const loader=Buffer.from(read('github-loader-template.luau').replace('__RELEASE_BASE__',`https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/releases/${version}/`));
+fs.writeFileSync(new URL('loader.lua',here),loader);fs.writeFileSync(new URL('loader.lua',release),loader);files.push({path:`releases/${version}/loader.lua`,bytes:loader.length,sha256:sha(loader)});
+fs.writeFileSync(new URL('release-manifest.json',here),JSON.stringify({format:'red-bull-ring-github-release-v1',version,partCount:plan.parts.length,combinedObjects:plan.meta.audit.combinedObjects,requiredBase:plan.meta.requiredBase.version,files},null,2)+'\n');
+const base=readBase(),review={meta:{...base.meta,palette:[...base.meta.palette,...plan.meta.palette]},centerline:base.centerline,parts:[...base.parts,...plan.parts.map(p=>{const q=[...p];q[6]+=base.meta.palette.length;return q;})]};
+fs.writeFileSync(new URL('build-topdown.png',here),render(review,2600,2000,{top:true}));
+fs.writeFileSync(new URL('build-detail.png',here),render(review,1400,900,{target:plan.parts[10].slice(0,3),span:350}));
+
+for(const [name,indices] of Object.entries(plan.meta.groups))fs.writeFileSync(new URL(`build-${name}-detail.png`,here),render(review,1400,900,{target:plan.parts[indices[Math.floor(indices.length/2)]].slice(0,3),span:110}));
+const l=base.meta.pitLayout,a=base.meta.pitPoints[l.straightStartIndex].pos,c=base.meta.pitPoints[l.exitStartIndex].pos,[dx,dz]=l.straightDirection;
+fs.writeFileSync(new URL('build-pit-lane.png',here),render(review,1600,600,{target:a.map((v,k)=>(v+c[k])/2),span:Math.hypot(c[0]-a[0],c[2]-a[2])+500,right:[dx,0,dz],up:[dz,0,-dx],forward:[0,1,0]}));
+const b=base.meta.planBounds,ox=b.min[0],oz=b.min[2],w=b.max[0]-ox,h=b.max[2]-oz;
+const route=base.centerline.filter((_,i)=>i%4===0).map(p=>`${p[0]-ox},${p[2]-oz}`).join(' ');
+const chainsSvg=chains.map(r=>`<polyline points="${r.path.map(p=>`${p[0]-ox},${p[1]-oz}`).join(' ')}" fill="none" stroke="${r.role==='steel'?'#6dc4ef':'#ffbf60'}" stroke-width="${r.role==='steel'?8:16}"/>`).join('');
+fs.writeFileSync(new URL('barrier-overview.svg',here),`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#253b29"/><polyline points="${route}" fill="none" stroke="#6f777b" stroke-width="40"/>${chainsSvg}<g fill="white" font-size="75" font-family="sans-serif"><text x="120" y="150">Red Bull Ring GLB paths: steel blue; concrete orange</text><text x="120" y="260">${groups.steel.length} steel + ${groups.concrete.length} concrete parts; pit straight left open</text></g></svg>`);
+console.log(JSON.stringify({version,barriers:plan.parts.length,combinedObjects:plan.meta.audit.combinedObjects}));

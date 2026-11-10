@@ -12,20 +12,21 @@ import {auditLowClearance} from './audit-low-clearance.mjs';
 
 const read=p=>JSON.parse(fs.readFileSync(new URL(p,import.meta.url),'utf8'));
 const source=read('../red-bull-ring-plan.json');
-const drivingSettings={pitWidth:18,pitSeparation:25,worldGradientSigma:300,heightSigma:180,bankSigma:100,jointMaxStep:.006,roadMaxPitchChangeDegrees:.06,pitKerbTrimResolutionStuds:.06};
+const drivingSettings={pitWidth:18,pitSeparation:25,pitSingleTurns:true,worldGradientSigma:300,heightSigma:180,bankSigma:100,jointMaxStep:.006,roadMaxPitchChangeDegrees:.06,pitKerbTrimResolutionStuds:.03,pitKerbMerge:true};
 const base=compileTrack(read('../../source/red-bull-ring-reference.json'),read('../../source/red-bull-ring-features.json'),read('../../source/ground-reference.json'),drivingSettings),start=base.parts.length;
 const runoffRefit=refitRunoff(base);
 
 const settings={edgeMaxLength:96,outerMaxLength:512,outerTolerance:10,outerMaxTurn:35,outerWidthVariation:20,recoveryShoulders:true,pitShoulders:true,pitShoulderWidth:24};
 const generated=addTerrain(base,read('../../source/ground-reference.json'),settings);
-const terrain=generated.parts.slice(start),domain=source.meta.startDomain,mapping=new Map();
+console.log(JSON.stringify({track:base.parts.length,groups:base.meta.groupCounts,totalBeforeCarving:generated.parts.length}));
+const terrain=generated.parts.slice(start),domain={...source.meta.startDomain,yawRadians:Math.atan2(base.meta.pitLayout.straightDirection[1],base.meta.pitLayout.straightDirection[0])},mapping=new Map();
 const plan=structuredClone(generated);plan.parts=plan.parts.slice(0,start);
 for(const [i,p]of terrain.entries()){
   const ids=[];
   for(const piece of carveTerrain(p,domain)){ids.push(plan.parts.length);plan.parts.push(piece);}
   mapping.set(start+i,ids);
 }
-if(plan.parts.length+1>=9000)throw Error(`Compact terrain exceeds the under-9000 target: ${plan.parts.length+1}`);
+if(plan.parts.length+1>=9000)throw Error(`Compact terrain exceeds the under-9000 target: ${plan.parts.length+1}; track groups ${JSON.stringify(base.meta.groupCounts)}; terrain ${plan.parts.length-start}`);
 const meta=plan.meta,t=generated.meta.terrain,remap=ids=>ids.flatMap(i=>mapping.get(i)??[]);
 meta.variant='clear-start-compact';meta.scope+='; smooth grass recovery shoulders and runoff; compact outer terrain under 9000 objects';
 meta.groups.terrain=plan.parts.slice(start).map((_,i)=>start+i);
