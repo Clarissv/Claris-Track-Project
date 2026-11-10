@@ -20,6 +20,14 @@ retains its material, colour, variant and striped decorations where present.
 [Source reference map](reference-overview.png) shows steel in blue and concrete
 in gold. [Final fitted map](../barrier-overview.svg) highlights both roles.
 
+For the native Others88 rotation, run [inspect-steel-orientation.lua](../inspect-steel-orientation.lua)
+in Jakarta after enabling Build Tools. It reads the catalog template directly,
+identifies the DiamondPlate / Diamond Plate 1 panel, and prints one
+`STEEL_ORIENTATION` JSON report with its root class, dimensions, component
+transforms and the rotation that makes the broad textured panel upright.
+No placement or held-preview edits are made. The current barrier loader still
+uses plain steel rails; the native report is needed to fit and rotate Others88.
+
 To identify the actual game assets, open Jakarta Build Tools and load the
 standalone inspector:
 
