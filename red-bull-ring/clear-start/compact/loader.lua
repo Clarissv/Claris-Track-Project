@@ -8,7 +8,7 @@ local isSlot = type(mode) == "number" or type(mode) == "string" and mode:match("
 if isSlot then mode = tonumber(mode); assert(mode and mode >= 1 and mode <= 4 and mode % 1 == 0, "Choose a save slot from 1 to 4") end
 assert(isSlot or mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose" or mode == "autosave" or mode == "recovery", "Red Bull Ring: expected build, resume, checkpoint, recovery, diagnose, autosave or a save slot from 1 to 4")
 if mode == "recovery" then slot=tonumber(slot);assert(slot and slot>=1 and slot%1==0,"Choose the saved track-part count, excluding grass") end
-local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/releases/f275f4b14568e3c8fa70/"
+local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/releases/66f1e928fd2d56c70976/"
 local CHECKPOINT = "red-bull-ring-clear-start-compact-jakarta-checkpoint.json"
 local function download(name)
     local url = BASE .. name

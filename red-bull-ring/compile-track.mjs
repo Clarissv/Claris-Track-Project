@@ -34,16 +34,23 @@ const nearestPoint=(points,q)=>{
   }
   return result;
 };
-function pitRoute(source,main,rawMain,width,route){
-  const layout=connectedPitLayout(source,main,{width,entryMainIndex:route.entryMainIndex*2,exitMainIndex:route.exitMainIndex*2}),points=layout.points;
+function pitRoute(source,main,rawMain,width,route,separation=0){
+  const layout=connectedPitLayout(source,main,{width,separation,entryMainIndex:route.entryMainIndex*2,exitMainIndex:route.exitMainIndex*2}),points=layout.points;
   for(const p of points){const adjusted=nearestPoint(main,p.pos).point,raw=nearestPoint(rawMain,p.pos).point;p.pos[1]+=adjusted.pos[1]-raw.pos[1];}
-  const filtered=smoothDrivingPoints(points,{heightSigma:65,bankSigma:100,closed:false});
+  if(separation>0)for(const p of points){
+    const q=nearestPoint(main,p.pos).point,n=q.normal,r=p.right,h=Math.hypot(r[0],r[2]);
+    p.pos[1]=q.pos[1]-(n[0]*(p.pos[0]-q.pos[0])+n[2]*(p.pos[2]-q.pos[2]))/n[1];
+    p.bank=-(n[0]*r[0]+n[2]*r[2])/(n[1]*h);
+  }
+  const filtered=smoothDrivingPoints(points,{heightSigma:separation>0?180:65,bankSigma:separation>0?180:100,closed:false});
   for(const p of filtered){
-    const {point:q,distance}=nearestPoint(main,p.pos),shared=Math.max(q.wr,q.wl)+width/2+35,t=Math.max(0,Math.min(1,(distance-shared)/70)),weight=1-t*t*(3-2*t),n=q.normal;
+    const {point:q,distance}=nearestPoint(main,p.pos),shared=Math.max(q.wr,q.wl)+width/2+35;
+    const t=Math.max(0,Math.min(1,(distance-shared)/70)),weight=1-t*t*(3-2*t),n=q.normal;
     const h=q.pos[1]-(n[0]*(p.pos[0]-q.pos[0])+n[2]*(p.pos[2]-q.pos[2]))/n[1],r=p.right,rh=Math.hypot(r[0],r[2]),bank=-(n[0]*r[0]+n[2]*r[2])/(n[1]*rh);
     p.pos[1]=p.pos[1]*(1-weight)+h*weight;p.bank=p.bank*(1-weight)+bank*weight;
   }
-  finishPoints(filtered,false);return {points:densifyDriving(filtered,2,false),meta:{...layout.meta,straightStartIndex:layout.meta.straightStartIndex*2,exitStartIndex:layout.meta.exitStartIndex*2,exitArcEndIndex:layout.meta.exitArcEndIndex*2}};
+  const density=separation>0?4:2;
+  finishPoints(filtered,false);return {points:densifyDriving(filtered,density,false),meta:{...layout.meta,straightStartIndex:layout.meta.straightStartIndex*density,exitStartIndex:layout.meta.exitStartIndex*density,exitArcEndIndex:layout.meta.exitArcEndIndex*density,...(layout.meta.exitApproachStartIndex!==undefined?{exitApproachStartIndex:layout.meta.exitApproachStartIndex*density}:{})}};
 }
 export function compileTrack(reference,features,ground,options={}){
   if(reference.format!=='red-bull-ring-reference-v1'||features.sourceSha256!==reference.sourceSha256||ground.sourceSha256!==reference.sourceSha256)throw Error('Mismatched Red Bull Ring sources');
@@ -56,7 +63,7 @@ export function compileTrack(reference,features,ground,options={}){
   const worldGradientSmoothing=smoothWorldSurface(points,settings.worldGradientSigma*settings.layoutScale,settings.layoutScale);
   points=densifyDriving(points,2);
   for(const p of points){const factor=Math.max(1,40/(p.wr+p.wl));p.wr*=factor;p.wl*=factor;}
-  const revisedPit=pitRoute(features.pitPoints,points,reference.points,settings.pitWidth,features.pitRoute),pit=revisedPit.points;
+  const revisedPit=pitRoute(features.pitPoints,points,reference.points,settings.pitWidth,features.pitRoute,settings.pitSeparation??0),pit=revisedPit.points;
   const parts=[],groups={},push=(group,p)=>{(groups[group]??=[]).push(parts.length);parts.push(p);return parts.length-1;};
   const initial=adaptiveSegments(points,settings.roadMaxLength,settings.roadTolerance,settings.roadMaxTurnDegrees*Math.PI/180,settings.roadPlaneTolerance,settings.roadMaxPitchChangeDegrees*Math.PI/180,1.25);
   const fitted=refineRoad(points,initial,{thickness:settings.roadThickness,maxStep:settings.jointMaxStep});

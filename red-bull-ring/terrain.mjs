@@ -1,4 +1,4 @@
-import {buildTerrain,constrainSurfaces,volumeAudit,clearanceAudit,topHeight,solidToDatum} from './bulk-terrain.mjs';
+import {buildTerrain,constrainSurfaces,createSurfaceConstraint,volumeAudit,clearanceAudit,topHeight,solidToDatum} from './bulk-terrain.mjs';
 import {adaptiveSegments,boxCorners,round} from './geometry.mjs';
 import {finishPoints} from './reference.mjs';
 import {terrainSlab} from './terrain-slab.mjs';
@@ -15,7 +15,7 @@ function sampler(ground){
     return total?sum/total:fallback;
   };
 }
-export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLength=96,outerMaxLength=160,outerTolerance=2.5,outerMaxTurn=20,outerWidthVariation=4,recoveryShoulders=false,margin=384,...options}={}){
+export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLength=96,outerMaxLength=160,outerTolerance=2.5,outerMaxTurn=20,outerWidthVariation=4,recoveryShoulders=false,pitShoulders=false,pitShoulderWidth=24,margin=384,...options}={}){
   rawGround=scaleGround(rawGround,base.meta.layoutScale??1);
   const ground={...rawGround,trackPlanDatum:base.meta.groundLift,heights:rawGround.heights.map(h=>h===null?null:h+base.meta.groundLift)};
   const bulk=buildTerrain(base,ground,{rootCell,minCell,margin,sourceTolerance:12,maxRoadGap:5,maxSlope:.32,...options}),start=base.parts.length;
@@ -90,6 +90,21 @@ export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLeng
       }
     }
   }
+  const fitPit=pitShoulders?createSurfaceConstraint(base,.01,false,true):null;
+  if(pitShoulders)for(const side of [-1,1]){
+    const line=base.meta.pitPoints.map((p,i)=>{
+      const r=p.right,h=Math.hypot(r[0],r[2]),offset=side*((side>0?p.wr:p.wl)+(pitShoulderWidth-.25)/2);
+      return {pos:[p.pos[0]+r[0]/h*offset,p.pos[1]+p.bank*offset-.025,p.pos[2]+r[2]/h*offset],bank:p.bank,wr:(pitShoulderWidth+.25)/2,wl:(pitShoulderWidth+.25)/2,surfaceRight:[r[0]/h,0,r[2]/h],sourceIndex:i};
+    });
+    finishPoints(line,false);
+    const emit=(first,last)=>{
+      const part=terrainSlab(line,first,last),fit=fitPit([part]);let error=0;
+      for(let i=first;i<=last;i++){const q=line[i];for(const d of [-q.wl,q.wr])error=Math.max(error,Math.abs(topHeight(part,q.pos[0]+q.surfaceRight[0]*d,q.pos[2]+q.surfaceRight[2]*d)-q.pos[1]-q.bank*d));}
+      if(last-first>1&&(error>.06||fit.maximumLowering>.08)){const mid=(first+last)>>1;emit(first,mid);emit(mid,last);return;}
+      spans.push({index:skirts.length,kind:'pit',side,inner:-.25,outer:pitShoulderWidth,start:first,end:last});skirts.push(part);
+    };
+    for(const [a,b] of adaptiveSegments(line,96,1,12*Math.PI/180,.25,Infinity,32))emit(a,b);
+  }
   const constrained=constrainSurfaces(base,skirts,recoveryShoulders?.01:.04,!recoveryShoulders,recoveryShoulders),foundationSet=new Set(bulk.meta.terrain.foundationIndices);
   if(recoveryShoulders){
     const near=constrained.parts.filter((_,i)=>spans[i].inner<0),indices=spans.flatMap((s,i)=>s.inner>=0?[i]:[]),fit=constrainSurfaces({parts:near},indices.map(i=>constrained.parts[i]),.01,false,true);
@@ -125,7 +140,7 @@ export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLeng
   if(!recoveryShoulders&&audit.intersections.length)throw Error('Terrain enters the driving geometry: '+JSON.stringify(audit.intersections.slice(0,5)));
   if(clearance.maxProtrusionStuds>.0002)throw Error('Terrain rises through a track surface');
   if(bulk.parts.length+1>=10000)throw Error('Full terrain build exceeds the under-10000 budget: '+JSON.stringify({total:bulk.parts.length+1,bulk:dressed.parts.length,edges:constrained.parts.length,bands:spans.reduce((r,s)=>(r[`${s.side}:${s.inner}`]=(r[`${s.side}:${s.inner}`]??0)+1,r),{})}));
-  bulk.meta.terrain={...bulk.meta.terrain,recoveryShoulders,shoulderWidthStuds:shoulderWidth,solidToFoundation:true,foundationTop:foundationTop+lift,solidFitting:{modified:filled.modified,maximumLoweringStuds:filled.maximumLowering},basePartCount:start,addedParts:grass.length,bulkParts:dressed.parts.length+foundations.length,edgeParts:constrained.parts.length,edgeSpans:spans.map(s=>({...s,index:start+dressed.parts.length+foundations.length+s.index})),totalWithExistingGrass:bulk.parts.length+1,foundationLift:lift,clearanceAudit:clearance,volumeAudit:audit,edgeLowering:{modified:constrained.modified,maximumStuds:constrained.maximumLowering},bulkDressing:{modified:dressed.modified,maximumStuds:dressed.maximumLowering}};
+  bulk.meta.terrain={...bulk.meta.terrain,recoveryShoulders,shoulderWidthStuds:shoulderWidth,...(pitShoulders?{pitShoulderWidthStuds:pitShoulderWidth}:{}),solidToFoundation:true,foundationTop:foundationTop+lift,solidFitting:{modified:filled.modified,maximumLoweringStuds:filled.maximumLowering},basePartCount:start,addedParts:grass.length,bulkParts:dressed.parts.length+foundations.length,edgeParts:constrained.parts.length,edgeSpans:spans.map(s=>({...s,index:start+dressed.parts.length+foundations.length+s.index})),totalWithExistingGrass:bulk.parts.length+1,foundationLift:lift,clearanceAudit:clearance,volumeAudit:audit,edgeLowering:{modified:constrained.modified,maximumStuds:constrained.maximumLowering},bulkDressing:{modified:dressed.modified,maximumStuds:dressed.maximumLowering}};
   bulk.meta.limitations=bulk.meta.limitations.filter(s=>!s.startsWith('Terrain uses broad'));
   bulk.meta.limitations.push('Roadside grass uses narrow fitted slope strips; open areas use broad planar patches and foundation tiles. Outer terraces and rectangular borders remain.');
   return bulk;

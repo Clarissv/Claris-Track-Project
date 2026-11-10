@@ -1,5 +1,5 @@
 import {finishPoints} from './reference.mjs';
-import {adaptiveSegments} from './geometry.mjs';
+import {adaptiveSegments,boxBasis} from './geometry.mjs';
 import {fittedSlab} from './road-geometry.mjs';
 import {add,mul,sub,unit} from './track-geometry.mjs';
 import {overlapVertices,topHeight,topFootprint,clipPolygon} from './surface-audit.mjs';
@@ -50,14 +50,34 @@ export function addContinuousKerbs(points,ranges,pitParts,settings,push){
       for(const [u,v] of adaptiveSegments(line.slice(a,b+1),28,.12,4*Math.PI/180,.014)){
         const part=fittedSlab(line,a+u,a+v,{width:settings.curbWidth,thickness:.12,color,guard:.02});
         part[5]+=.75;
-        if(pitParts.some(p=>overlapVertices(part,p).length))continue;
-        spans.push({index:push('curbs',part),side,start:start+a+u,end:start+a+v});
+        if(pitParts.some(p=>overlapVertices(part,p).length)){
+          if(!settings.pitKerbTrimResolutionStuds)continue;
+          for(const piece of trimKerbAtPit(part,pitParts,settings.pitKerbTrimResolutionStuds))spans.push({index:push('curbs',piece),side,start:start+a+u,end:start+a+v});
+        }else spans.push({index:push('curbs',part),side,start:start+a+u,end:start+a+v});
       }
       a=b;
     }
     runs.push({side,start,end,arc});
   }
   return {spans,runs};
+}
+
+// Retain the portions of a stripe outside the pit. Removing an entire
+// overlapping stripe leaves a visible kerb gap well beyond the pit opening.
+export function trimKerbAtPit(part,pitParts,resolution=.06){
+  const nearby=pitParts.filter(p=>overlapVertices(part,p).length),pieces=[];
+  const split=p=>{
+    if(!nearby.some(q=>overlapVertices(p,q).length)){pieces.push(p);return;}
+    const axis=p[3]>p[5]?3:5;
+    if(p[axis]<=resolution)return;
+    const basis=boxBasis(p),direction=axis===3?basis.right:basis.back;
+    for(const sign of [-1,1]){
+      const piece=[...p];piece[axis]/=2;
+      for(let k=0;k<3;k++)piece[k]+=sign*direction[k]*p[axis]/4;
+      split(piece);
+    }
+  };
+  split([...part]);return pieces;
 }
 
 export function addCornerAprons(points,aprons,scale,push){

@@ -25,7 +25,7 @@ red-bull-ring/
 | Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
 | Red Bull Ring with terrain (1.5× layout) | 9,629 | [Red Bull Ring](red-bull-ring/README.md) |
 | Red Bull Ring with a clear starting area | 9,623 | [Clear start](red-bull-ring/clear-start/README.md) |
-| Red Bull Ring with smooth shoulders, compact terrain and a clear starting area | 8,617 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
+| Red Bull Ring with smooth roads, an 18-stud pit lane, compact terrain and a clear starting area | 8,293 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint
@@ -76,9 +76,10 @@ Red Bull Ring with compact terrain, autosaving to slot 3:
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/loader.lua"))("autosave", 3)
 ```
 
-This version needs a fresh build and contains **8,618 objects including grass**.
-It preserves the road geometry, smooths the grass/runoff transitions, and uses
-319 fewer parts than the preceding compact version. See its
+This version needs a fresh build and contains **8,294 objects including grass**.
+It retains the horizontal racing layout, smooths the road and grass/runoff
+transitions, and widens the pit to 18 studs with a minimum 25-stud building gap.
+It uses 324 fewer parts than the preceding smooth compact version. See its
 instructions before replacing a saved slot.
 
 ## Checks and maintenance

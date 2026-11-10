@@ -118,18 +118,22 @@ function planeTile(x,z,size,height,gx,gz,bottom,color=5) {
   const center=sub(top,mul(up,thickness/2));
   return [...center,width+.04,thickness,depth+.04,color,...right,...up].map((v,i)=>i>=7?Math.round(v*1e8)/1e8:round(v));
 }
-export function constrainSurfaces(base,parts,clearance=.05,belowUnderside=true,topOnly=false){
+export function createSurfaceConstraint(base,clearance=.05,belowUnderside=true,topOnly=false){
   // Recovery grass may share buried volume with a road. Fit beneath the
   // driving top instead of its exposed side/underside, which creates a lip.
-  const nearby=spatialIndex(base.parts,128,true),faces=base.parts.map(p=>topOnly?[{polygon:topFootprint(p),height:(x,z)=>topHeight(p,x,z)}]:surfaceFaces(p,!belowUnderside));let modified=0,maximumLowering=0;
-  const result=parts.map(part=>{
-    const p=[...part],upper=surfaceFaces(p,true);let lowering=0;
-    for(const i of nearby(p))for(const a of upper)for(const b of faces[i])for(const [x,z] of polygonIntersection(a.polygon,b.polygon))lowering=Math.max(lowering,a.height(x,z)-b.height(x,z)+clearance);
-    if(lowering>0){p[1]=round(p[1]-lowering-.002);modified++;maximumLowering=Math.max(maximumLowering,lowering);}
-    return p;
-  });
-  return {parts:result,modified,maximumLowering};
+  const nearby=spatialIndex(base.parts,128,true),faces=base.parts.map(p=>topOnly?[{polygon:topFootprint(p),height:(x,z)=>topHeight(p,x,z)}]:surfaceFaces(p,!belowUnderside));
+  return parts=>{
+    let modified=0,maximumLowering=0;
+    const result=parts.map(part=>{
+      const p=[...part],upper=surfaceFaces(p,true);let lowering=0;
+      for(const i of nearby(p))for(const a of upper)for(const b of faces[i])for(const [x,z] of polygonIntersection(a.polygon,b.polygon))lowering=Math.max(lowering,a.height(x,z)-b.height(x,z)+clearance);
+      if(lowering>0){p[1]=round(p[1]-lowering-.002);modified++;maximumLowering=Math.max(maximumLowering,lowering);}
+      return p;
+    });
+    return {parts:result,modified,maximumLowering};
+  };
 }
+export const constrainSurfaces=(base,parts,clearance=.05,belowUnderside=true,topOnly=false)=>createSurfaceConstraint(base,clearance,belowUnderside,topOnly)(parts);
 export function clearanceAudit(base,terrain,clearance=.05,belowUnderside=true,topOnly=false) {
   const nearby=spatialIndex(base.parts,128,true),faces=base.parts.map(p=>topOnly?[{polygon:topFootprint(p),height:(x,z)=>topHeight(p,x,z)}]:surfaceFaces(p,!belowUnderside));let maxProtrusion=-Infinity,overlaps=0,worst=null;
   for(const [ti,p] of terrain.entries())for(const i of nearby(p))for(const a of surfaceFaces(p,true))for(const b of faces[i])for(const [x,z] of polygonIntersection(a.polygon,b.polygon)){

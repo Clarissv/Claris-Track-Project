@@ -1,5 +1,8 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {collisionSampler,topFootprint} from '../../surface-audit.mjs';
+import {KDTree} from '../../track-geometry.mjs';
 export function auditShoulders(plan,{stride=1,width=40,spacing=1}={}){
   const visual=new Set(plan.meta.nonCollidingPartIndices),surface=collisionSampler(plan.parts.filter((_,i)=>!visual.has(i)));
   let samples=0,missing=0,maxStep=0,worst=null,maxDrop=0,worstDrop=null;
@@ -50,7 +53,22 @@ export function auditRunoffTransitions(plan,{stride=1,margin=8,spacing=1}={}){
   }
   return {samples,traces:traces.size,missing,marginStuds:margin,sampleSpacingStuds:spacing,maxStepStuds:maxStep,maxDropStuds:maxDrop,worst,worstDrop};
 }
-if(process.argv[1]&&import.meta.url.endsWith('/audit-shoulders.mjs')){
+export function auditPitShoulders(plan){
+  const centerline=plan.meta.pitPoints.map(p=>[...p.pos,p.wr,p.wl,p.s,...p.normal]);
+  return auditShoulders({...plan,centerline},{width:20});
+}
+export function auditPitGap(plan){
+  const line=plan.centerline,tree=new KDTree(line.slice(0,-1).map((p,i)=>[p[0],p[2],i])),gaps=[];
+  const start=plan.meta.pitLayout.straightStartIndex,end=plan.meta.pitLayout.exitApproachStartIndex??plan.meta.pitLayout.exitStartIndex;
+  for(let i=start;i<=end;i++){
+    const p=plan.meta.pitPoints[i],j=tree.nearest([p.pos[0],p.pos[2]]).point[2],q=line[j],a=line[Math.max(0,j-1)],b=line[Math.min(line.length-1,j+1)],dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz);
+    const offset=((p.pos[0]-q[0])*dz-(p.pos[2]-q[2])*dx)/length;
+    gaps.push(Math.abs(offset)-(offset>0?q[3]:q[4])-(p.wr+p.wl)/2);
+  }
+  gaps.sort((a,b)=>a-b);
+  return {samples:gaps.length,minimumGapStuds:gaps[0],medianGapStuds:gaps[(gaps.length/2)>>1],maximumGapStuds:gaps.at(-1),pitWidthStuds:plan.meta.pitLane.widthStuds};
+}
+if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1])){
   const file=process.argv[2];
   if(file)console.log(JSON.stringify(auditShoulders(JSON.parse(fs.readFileSync(file))),null,2));
 }

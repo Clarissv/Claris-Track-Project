@@ -1,10 +1,26 @@
 # Red Bull Ring with compact terrain
 
-**8,617 placed parts; 8,618 total with one existing grass plate.** The smooth
-shoulder update uses **319 fewer parts** than the preceding compact version,
-and 1,006 fewer than the original clear-start build. The main road, pit lane,
-kerbs, markings, elevation, scale and standing anchor are preserved exactly.
-The 669 runoff and 207 gravel pieces are refitted to the road's height plane.
+**8,293 placed parts; 8,294 total with one existing grass plate.** This pit and
+road revision uses **324 fewer parts** than the preceding smooth compact
+version, and 1,330 fewer than the original clear-start build. The horizontal
+racing layout, vehicle scale and clear starting position are preserved.
+
+The pit lane is now **18 studs wide**. The building portion of the pit straight
+has at least a **25-stud gap** from the racing road; the checked range is
+25.49–32.01 studs. Its entry retains the longer native route. A gradual
+transition after the building straight rejoins the rounded exit, keeping the
+exit clear of the racing road until its intended merge. Grass follows the
+complete pit route for 24 studs on both sides, including the entry. Kerbs are
+trimmed at the pit opening instead of dropping whole red/white stripes.
+
+The road's height and banking are smoothed over longer distances while
+retaining 250.72 studs of elevation change. Asphalt uses 2,687 pieces instead
+of 3,181. Neighbouring racing-road joints stay below 0.006 studs and 0.061
+degrees of pitch change. Pit joints stay below 0.006 studs. A geometric chassis
+check uses a 16-stud wheelbase with four studs of overhang at each end: the
+largest rise under the wheelbase is below 0.005 studs, and under the nose/tail
+below 0.011 studs. These checks cannot establish live suspension behaviour.
+The 635 runoff and 197 gravel pieces follow the revised road height.
 
 Grass follows the road's height and crossfall for at least 48 studs on both
 sides, even through tight bends. This flat recovery area widens across the
@@ -15,10 +31,12 @@ toward the source ground; broad outer terrain uses longer fitted pieces. The
 Outer terrain is less detailed and retains visible planar joins and terraces.
 
 Across more than two million samples, the largest checked surface change
-over one stud is **0.320 studs**, including kerbs, compared with **28.493** in
+over one stud is **0.290 studs**, including kerbs, compared with **28.493** in
 the preceding compact shoulders. The maximum shoulder drop from the road's
-plane is **0.253 studs**, compared with **29.398** before. Runoff checks extend
-eight studs beyond every retained apron and have a maximum drop of **0.316**.
+plane is **0.243 studs**, compared with **29.398** before. Runoff checks extend
+eight studs beyond every retained apron and have a maximum drop of **0.296**.
+The full pit shoulder check has no uncovered samples and a maximum drop of
+0.097 studs.
 These are geometry checks; live suspension, tyre grip and save/reload still
 need a driving session. Nearby grass shares buried volume with the road
 while its complete upper surface stays below the driving top.
@@ -28,8 +46,16 @@ while its complete upper surface stays below the driving top.
 
 ## Build and autosave to slot 3
 
-Push the prepared files before using the new GitHub loader. Start a **fresh
-Jakarta build with only the original grass plate**, enable build tools, and
+Push the prepared files before using the new GitHub loader:
+
+```powershell
+cd "F:\VSCode\Luau\Claris Track Project"
+git add -- README.md red-bull-ring/bulk-terrain.mjs red-bull-ring/compile-track.mjs red-bull-ring/pit-layout.mjs red-bull-ring/terrain.mjs red-bull-ring/track-tidy.mjs red-bull-ring/clear-start/compact
+git commit -m "Widen Red Bull Ring pit and smooth road grades"
+git push origin main
+```
+
+Start a **fresh Jakarta build with only the original grass plate**, enable build tools, and
 stand where you want the clear area's centre. Then run:
 
 ```lua
@@ -40,17 +66,18 @@ Use **Inspect**, **Preview**, then **Build / Resume**. This arms saves to your
 chosen slot 3 without starting placement automatically. Each checkpoint
 overwrites slot 3. Autosave pauses placement, waits 31 seconds after the prior
 save finishes, saves every 500 objects and every 100 from 8,500, then saves the
-complete **8,618-object** build. A failure or missing reply stops placement.
+complete **8,294-object** build. A failure or missing reply stops placement.
 
 The paused 9,530-object build and its old checkpoints use different terrain.
 Build this version in a fresh server; loading its panel alone does not delete
 the old build. It rejects placement if existing objects plus the compact
 remainder would reach 9,000 total objects. Additional placed objects consume
-the 381-object margin beneath that target, so start with just the grass plate.
+the 705-object margin beneath that target, so start with just the grass plate.
 
 This update also needs a fresh build if you already built the preceding
-compact geometry. Its pinned [8,937-object loader](releases/d2840d8a3fc35727fc0c/loader.lua)
-remains available for its existing checkpoints.
+compact geometry. The pinned [8,618-object smooth-shoulder loader](releases/f275f4b14568e3c8fa70/loader.lua)
+and [8,937-object original compact loader](releases/d2840d8a3fc35727fc0c/loader.lua)
+remain available for their existing checkpoints.
 
 The original clear-start loader and releases remain available. Compact uses
 `_G.RedBullRingClearStartCompactBuilder`, its own panel and executor folder
@@ -81,15 +108,17 @@ npm.cmd test
 npm.cmd run test:lua
 ```
 
-The generator reads the original clear-start road prefix and source ground
-reference. It preserves road parts exactly, refits runoff/gravel, regenerates
-recovery shoulders and outer terrain, and carves the same starting area. It
+The generator reads the frozen track/feature/ground references and the original
+clear-start opening. It retains the horizontal racing layout, regenerates the
+smoother road and wider separated pit, refits runoff/gravel, adds recovery
+shoulders along both roads, and carves the same starting area. It
 rejects geometry protruding above the driving surfaces, an obstruction in the
 starting area, shoulder/runoff steps or drops above 0.35 studs, and a complete
 build reaching 9,000 objects.
 
 Geometry checks cover road and kerb coverage, pit connections, full terrain
-volumes, surface clearance and complete shoulder/runoff cross-sections.
+volumes, surface clearance, the building gap, chassis clearance, and complete
+main-road, pit and runoff cross-sections.
 Offline Lua checks cover placement, pause,
 checkpoint recovery, independent builder state, total-object guards, slot
 selection, shared cooldown and autosave outcomes. Root project checks include

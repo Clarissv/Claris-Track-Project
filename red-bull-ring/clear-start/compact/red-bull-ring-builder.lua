@@ -652,7 +652,7 @@ function api.Save(slot)
 assert(not busy,"Pause the builder and wait for its current placement or save")
 return requestSlotSave(slot,false)
 end
-local AUTO_GROUPS = {{"asphalt",1,3181},{"edgeMarkings",3182,4442},{"curbs",4443,5025},{"sand",5026,5232},{"runoff",5233,5901},{"pitLane",5902,6215},{"pitMarkings",6216,6454},{"startFinish",6455,6455},{"terrain",6456,8617}}
+local AUTO_GROUPS = {{"asphalt",1,2687},{"edgeMarkings",2688,3856},{"curbs",3857,4826},{"sand",4827,5023},{"runoff",5024,5658},{"pitLane",5659,6070},{"pitMarkings",6071,6324},{"startFinish",6325,6325},{"terrain",6326,8293}}
 local function saveGroups(first,last)
     local names={}
     for _,group in ipairs(AUTO_GROUPS) do
