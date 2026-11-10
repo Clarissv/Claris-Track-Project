@@ -25,7 +25,7 @@ red-bull-ring/
 | Monza with terrain | 10,750 | [Terrain](monza/terrain/README.md) |
 | Red Bull Ring with terrain (1.5× layout) | 9,629 | [Red Bull Ring](red-bull-ring/README.md) |
 | Red Bull Ring with a clear starting area | 9,623 | [Clear start](red-bull-ring/clear-start/README.md) |
-| Red Bull Ring with smooth roads, an 18-stud pit lane, compact terrain and a clear starting area | 8,173 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
+| Red Bull Ring with connected ramps, an 18-stud pit lane, compact terrain and a clear starting area | 5,138 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint
@@ -76,17 +76,17 @@ Complete Red Bull Ring with compact terrain and concrete barriers, autosaving to
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/build-all.lua"))(3)
 ```
 
-This version starts automatically in a fresh build and contains **8,387 objects including grass**.
+This version starts automatically in a fresh build and contains **5,346 objects including grass**.
 It retains the horizontal racing layout, smooths the road and grass/runoff
 transitions, and widens the pit to 18 studs with a minimum 25-stud building gap.
-It removes the extra pit bends and uses 120 fewer parts than the previous compact road. See its
+Connected ramp sections replace many short slabs and reduce the complete build by 3,041 parts. See its
 instructions before replacing a saved slot.
 
 ## Checks and maintenance
 
 The [full-circuit barriers](red-bull-ring/clear-start/compact/barriers/README.md)
-add **213 concrete Parts** along tidied GLB paths. The pit straight stays open.
-The single entry point builds the 8,174-object base first, then adds barriers
+add **207 concrete Parts** along tidied GLB paths. The pit straight stays open.
+The single entry point builds the 5,139-object base first, then adds barriers
 and confirms the final slot save. Its separate add-on loader remains available
 for a matching completed base and existing barrier checkpoints.
 

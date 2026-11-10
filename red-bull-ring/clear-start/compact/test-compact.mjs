@@ -8,6 +8,9 @@ import {auditDriving,auditKerbCoverage,auditPitConnections} from '../../audit-dr
 import {intersectsDomain} from '../domain.mjs';
 import {auditShoulders,auditRunoffTransitions,auditPitShoulders,auditPitGap} from './audit-shoulders.mjs';
 import {auditLowClearance} from './audit-low-clearance.mjs';
+import {auditJoins} from '../../surface-audit.mjs';
+import {gradeSurface} from '../../graded-surface.mjs';
+import {finishPoints} from '../../reference.mjs';
 const read=p=>JSON.parse(fs.readFileSync(new URL(p,import.meta.url))),plan=read('red-bull-ring-plan.json'),source=read('../red-bull-ring-plan.json');
 const sha=s=>crypto.createHash('sha256').update(s).digest('hex'),start=plan.meta.terrain.basePartCount;
 
@@ -88,6 +91,39 @@ test('road fitting reduces joints and chassis clearance bumps while retaining hi
   assert(plan.meta.surfaceSmoothing.roadJoins.maxPitchChangeDegrees<.062);
   assert(plan.meta.groups.asphalt.length<source.meta.groups.asphalt.length);
   assert(plan.meta.retainedHeightRange[1]-plan.meta.retainedHeightRange[0]>200);
+});
+test('connected ramps are longer and smoother than the preceding published compact road',()=>{
+  const published=read('releases/f78205c653c1bc354f82/runtime-plan.json');
+  const roadIds=published.meta.catalogRoles.find(r=>r.name==='Others75').partIndices;
+  const old={...plan,parts:published.parts,meta:{...plan.meta,groups:{asphalt:roadIds,pitLane:[]}}};
+  const oldAudit=auditLowClearance(old),current=plan.meta.lowClearanceAudit;
+  assert(current.maxCrestRiseStuds<oldAudit.maxCrestRiseStuds/2);
+  assert(current.maxOverhangRiseStuds<oldAudit.maxOverhangRiseStuds/2);
+  assert(plan.meta.groups.asphalt.length<2687/2);
+  assert(plan.meta.surfaceSmoothing.medianRoadLengthStuds>5.0645*1.8);
+  assert.deepEqual(auditJoins(plan,plan.meta.roadSegments,true),plan.meta.surfaceSmoothing.roadJoins);
+  assert(plan.meta.surfaceSmoothing.roadJoins.maxOverlapStep<.001);
+  assert(plan.meta.surfaceSmoothing.roadJoins.maxPitchChangeDegrees<.062);
+  const g=plan.meta.compactTerrain.gradedSurface;
+  assert.equal(g.lengthStuds,40);assert(g.gradientConstraintResidual<.00002);assert(Math.abs(g.closureResidualStuds)<1e-7);
+  assert(Math.abs(plan.meta.retainedHeightRange[1]-plan.meta.retainedHeightRange[0]-250.72107256986556)<1e-6);
+  // Checking all overlap vertices must detect an edge lip, including banking.
+  const raised=structuredClone(plan);raised.parts[plan.meta.roadSegments[20].index][1]+=.02;
+  assert(auditJoins(raised,raised.meta.roadSegments,true).maxOverlapStep>.019);
+});
+test('ramp fitting handles a level closed circuit and rejects invalid profiles',()=>{
+  const points=[],push=(x,z)=>points.push({pos:[x,12.3,z],wr:20,wl:20,bank:0});
+  for(let x=-500;x<500;x+=10)push(x,-100);
+  for(let i=0;i<64;i++){const a=-Math.PI/2+i*Math.PI/64;push(500+100*Math.cos(a),100*Math.sin(a));}
+  for(let x=500;x>-500;x-=10)push(x,100);
+  for(let i=0;i<64;i++){const a=Math.PI/2+i*Math.PI/64;push(-500+100*Math.cos(a),100*Math.sin(a));}
+  finishPoints(points);
+  const horizontal=points.map(p=>[p.pos[0],p.pos[2]]),lap=points.at(-1).s;
+  gradeSurface(points,{length:40});
+  assert.deepEqual(points.map(p=>[p.pos[0],p.pos[2]]),horizontal);assert.equal(points.at(-1).s,lap);
+  for(const p of points){assert.equal(p.pos[1],12.3);assert(p.normal.every(Number.isFinite));}
+  assert.throws(()=>gradeSurface(points,{length:-1}),/positive/);
+  assert.throws(()=>gradeSurface(points.slice(0,-1)),/closed/);
 });
 test('compact has matching pinned release assets and independent builder/checkpoint names',()=>{
   const manifest=read('release-manifest.json'),runtime=read(`releases/${manifest.version}/runtime-plan.json`);

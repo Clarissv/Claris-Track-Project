@@ -48,11 +48,19 @@ export function generate(base=readBase()){
   // Check complete fitted rectangles against the pit corridor too; source
   // point clipping alone does not account for a rectangle's extended ends.
   const e=exclusion,a=e.direction,mid=(e.start+e.end)/2,pitBox=[e.origin[0]+a[0]*mid,0,e.origin[1]+a[1]*mid,e.halfWidth*2,1,e.end-e.start,1,a[1],0,-a[0],0,1,0],kept=[],keptChains=[];
-  let removedStrayConcrete=0,removedShortHooks=0;
-  const steelSegments=chains.filter(c=>c.role==='steel').flatMap(c=>c.path.slice(1).flatMap((b,i)=>parts[c.indices[i]][5]>=25?[[c.path[i],b]]:[]));
+  let removedStrayConcrete=0,removedShortHooks=0,removedReverseHooks=0;
+  // Terrain refits can push two reference spans into a near-180-degree return.
+  // Keep the longer run and omit the overlapping shorter leg, leaving a gap
+  // rather than manufacturing another connector through the recovery area.
+  const reverseHooks=new Set();
+  for(const c of chains.filter(c=>c.role==='steel'))for(let i=1;i<c.path.length-1;i++){
+    const [a,b,d]=c.path.slice(i-1,i+2),u=b.map((v,k)=>v-a[k]),v=d.map((x,k)=>x-b[k]);
+    if(u[0]*v[0]+u[1]*v[1]<0){const left=c.indices[i-1],right=c.indices[i];reverseHooks.add(parts[left][5]<=parts[right][5]?left:right);}
+  }
+  const steelSegments=chains.filter(c=>c.role==='steel').flatMap(c=>c.path.slice(1).flatMap((b,i)=>!reverseHooks.has(c.indices[i])&&parts[c.indices[i]][5]>=25?[[c.path[i],b]]:[]));
   for(const chain of chains){let ids=[],path=[];const cut=chain.indices.some(i=>overlapVertices(parts[i],pitBox).length);
     const flush=()=>{if(ids.length)keptChains.push({...chain,closed:chain.closed&&!cut,indices:ids,path});ids=[];path=[];};
-    for(let j=0;j<chain.indices.length;j++){const p=parts[chain.indices[j]];if(overlapVertices(p,pitBox).length){removedPitLength+=p[5];flush();continue;}if(chain.role==='steel'&&p[5]<25){removedShortHooks++;flush();continue;}if(chain.role==='concrete'&&Math.min(...steelSegments.map(([a,b])=>segmentDistance([p[0],p[2]],a,b)))>25){removedStrayConcrete++;flush();continue;}if(!path.length)path.push(chain.path[j]);path.push(chain.path[j+1]);ids.push(kept.length);kept.push(p);}flush();
+    for(let j=0;j<chain.indices.length;j++){const p=parts[chain.indices[j]];if(overlapVertices(p,pitBox).length){removedPitLength+=p[5];flush();continue;}if(reverseHooks.has(chain.indices[j])){removedReverseHooks++;flush();continue;}if(chain.role==='steel'&&p[5]<25){removedShortHooks++;flush();continue;}if(chain.role==='concrete'&&Math.min(...steelSegments.map(([a,b])=>segmentDistance([p[0],p[2]],a,b)))>25){removedStrayConcrete++;flush();continue;}if(!path.length)path.push(chain.path[j]);path.push(chain.path[j+1]);ids.push(kept.length);kept.push(p);}flush();
   }
   parts.splice(0,parts.length,...kept);chains.splice(0,chains.length,...keptChains);
   const driving=base.parts.slice(0,base.meta.groups.terrain[0]).filter((_,i)=>!visual.has(i)),blocked=volumeAudit({parts:driving},parts);
@@ -61,6 +69,7 @@ export function generate(base=readBase()){
   for(const p of parts){const basis=boxBasis(p),steps=Math.ceil(p[5]/2);for(let i=0;i<=steps;i++)for(const side of [-.5,0,.5]){const along=(i/steps-.5)*p[5],x=p[0]+basis.back[0]*along+basis.right[0]*side*p[3]+basis.up[0]*p[4]/2,z=p[2]+basis.back[2]*along+basis.right[2]*side*p[3]+basis.up[2]*p[4]/2,h=ground(x,z),top=topHeight(p,x,z),bottom=top-p[4]/basis.up[1];if(!Number.isFinite(h))throw Error(`Missing ground under barrier ${parts.indexOf(p)}`);maxGroundGap=Math.max(maxGroundGap,bottom-h);maxBuried=Math.max(maxBuried,h-bottom);minVisible=Math.min(minVisible,top-h);}}
   if(maxGroundGap>=0||minVisible<2.5)throw Error(`Barrier grounding failed: ${JSON.stringify({maxGroundGap,minVisible,maxBuried})}`);
   for(const chain of chains)for(let i=1;i<chain.indices.length;i++)if(!boxesOverlap(parts[chain.indices[i-1]],parts[chain.indices[i]],0))throw Error(`Open barrier join ${chain.indices[i]}`);
+  for(const c of chains.filter(c=>c.role==='steel'))for(let i=1;i<c.path.length-1;i++){const [a,b,d]=c.path.slice(i-1,i+2),u=b.map((v,k)=>v-a[k]),v=d.map((x,k)=>x-b[k]);if(u[0]*v[0]+u[1]*v[1]<0)throw Error('Retained barrier reverses through a fitted detour');}
   if(base.parts.length+parts.length+1>=9500)throw Error('Full build exceeds the 9500 physical-part budget');
   const corners=parts.flatMap(boxCorners),manifest=JSON.parse(fs.readFileSync(new URL('../release-manifest.json',here))),refs=[...new Set([1,Math.ceil(base.meta.groups.asphalt.length/2),base.meta.groups.asphalt.at(-1)+1,base.meta.groups.pitLane[0]+1,base.meta.groups.pitLane.at(-1)+1,base.parts.length])],requiredBase={version:manifest.version,count:base.parts.length,checksum:checksum(base.parts),references:refs.map(index=>({index,part:base.parts[index-1]}))},groups={grey:[],concrete:[]};for(const [i,p] of parts.entries())groups[p[6]===1?'grey':'concrete'].push(i);
   return {meta:{
@@ -72,7 +81,7 @@ export function generate(base=readBase()){
     reference:{sourceSha256:reference.meta.sourceSha256,materials:reference.meta.materials,
       method:'GLB footprints thinned at 2 studs; omit bracket spurs under 40 studs; simplify fitted runs without loops or sharp terrain detours; remove isolated concrete beyond 25 studs from the main runs',
       implementation:'Long rectangular Others68 concrete Parts: grey on the former steel runs, native appearance on retained concrete terminals. No Others88 or steel material.',
-      maxReferenceShiftStuds:maxReferenceShift,removedPitStraightLengthStuds:removedPitLength,removedStartAreaLengthStuds:removedStartLength,removedStrayConcrete,removedShortHooks,omittedCrossings},
+      maxReferenceShiftStuds:maxReferenceShift,removedPitStraightLengthStuds:removedPitLength,removedStartAreaLengthStuds:removedStartLength,removedStrayConcrete,removedShortHooks,removedReverseHooks,omittedCrossings},
     audit:{combinedObjects:base.parts.length+parts.length+1,physicalBaseParts:base.parts.length+parts.length+1,drivingSolidIntersections:blocked.intersections.length,maxGroundGap,maxBuried,minVisible},
     sourceSha256:reference.meta.sourceSha256,centerlineSha256:base.meta.centerlineSha256,placementAnchor:base.meta.placementAnchor},parts};
 }

@@ -1,7 +1,7 @@
 ﻿# Red Bull Ring tidy concrete barriers
 
-**213 additional Parts: 184 grey runs and 29 retained concrete terminals.
-8,387 total Parts with the matching road, terrain and original grass plate.**
+**207 additional Parts: 181 grey runs and 26 retained concrete terminals.
+5,346 total Parts with the matching road, terrain and original grass plate.**
 
 All barriers use the resizable **Others68 concrete Part**. Main runs are grey;
 retained GLB concrete terminals keep the template's native appearance and
@@ -9,7 +9,8 @@ decorations. Others88 and steel materials are no longer placed.
 
 Paths follow the Red Bull Ring GLB, adapted to the revised recovery areas.
 Long straight sections replace the previous detour clutter. Short bracket
-spurs, 14 fitted hooks and 18 isolated concrete pieces are omitted. Connections
+spurs, 11 fitted hooks, one overlapping reverse leg and 15 isolated concrete
+pieces are omitted. Connections
 that would cross a road or abrupt outer-terrain step remain open instead of
 forming loops. Retained main sections have no backtracking or pieces shorter
 than 25 studs. They extend up to about 320 studs where the ground permits.
@@ -17,10 +18,10 @@ than 25 studs. They extend up to about 320 studs where the ground permits.
 The entire pit straight stays open; entry and exit retain reference sections.
 Complete footprints are checked against the pit corridor and empty starting
 square. Barriers intersect no driving solids, have buried bottoms, and expose
-at least 3.35 studs above the ground. Outer-terrain gaps remain where continuous
+at least 3.18 studs above the ground. Outer-terrain gaps remain where continuous
 fencing would require unsafe detours.
 
-The base remains road release `f78205c653c1bc354f82`: **8,173 placed Parts**,
+The matching connected-ramp base is release `c8e791ad3efdfa73e337`: **5,138 placed Parts**,
 18-stud pit width, at least 25 studs of building space, one entry curve and one
 rounded exit. The 400 x 400 starting square keeps its centre and pit alignment.
 
@@ -38,7 +39,7 @@ This starts automatically, builds road and terrain first, confirms that stage's
 slot save, then builds the concrete barriers and confirms the final combined
 save. **Autosaves replace slot 3.** Both stages use pinned releases and the
 shared 31-second save cooldown. The console prints `DONE` only after the final
-8,387-object save is confirmed.
+5,346-object save is confirmed.
 
 The current stage panel provides Pause and Build / Resume. Resuming the road
 through its panel still hands off to barriers automatically. Repeating the
@@ -53,6 +54,9 @@ The separate `barriers/loader.lua` remains available for adding barriers to the
 completed matching road, and for its checkpoint, resume, diagnose and slot-save
 modes. Its builder inherits the road's exact origin, rotation and scale.
 Checkpoints from the previous steel layout do not match this barrier geometry.
+The smoother road changes heights and requires a fresh full build. The previous
+[8,387-object full-build release](releases/9a8b122ade3ac5a48a29/build-all.lua)
+remains unchanged for its matching road and checkpoints.
 
 If a previous concrete barrier run stopped on an accepted object that streamed
 out, keep its current session open, step out of the car and run:

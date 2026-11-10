@@ -26,7 +26,7 @@ local CONFIG = {
     FollowDistance = 48,
     FollowHeight = 12,
     FollowSettleTime = 0.75,
-    MaxObjects = 213,
+    MaxObjects = 207,
     ServerObjectLimit = 10000, -- Local count guard; Jakarta's server save cap is not established by the export.
     SaveObjectLimit = nil, -- Set only to a confirmed Jakarta save limit; includes other placed objects.
     ApplyAppearance = true, -- Color/material controls require the game's Build Tools Plus access.
@@ -328,6 +328,28 @@ local function objectUuid(object)
     local id = object.Name:match("^%{(.-)%}$") or object.Name
     if #id == 36 and id:match(UUID_PATTERN) then return string.lower(id) end
 end
+local roadMeasurements = {confirmed=0,maxPositionErrorStuds=0,maxTopErrorStuds=0}
+local function roadSurfaceError(object, request)
+    local role = PART_ROLE[request.index]
+    if not role or CATALOG_ROLES[role].name ~= "Others75" then return nil end
+    local right, up = request.cf.RightVector, request.cf.UpVector
+    local back = Vector3.new(right.Y*up.Z-right.Z*up.Y, right.Z*up.X-right.X*up.Z, right.X*up.Y-right.Y*up.X)
+    local actualUp = object.CFrame.UpVector
+    local actualTop = object.Position + actualUp * (object.Size.Y / 2)
+    local maximum = 0
+    -- Compare the two top planes at all four requested corners. This catches
+    -- pitch and banking errors that a position-only replication check misses.
+    for _, side in ipairs({-1,1}) do for _, along in ipairs({-1,1}) do
+        local corner = request.cf.Position + up * (request.size.Y/2) + right * (side*request.size.X/2) + back * (along*request.size.Z/2)
+        maximum = math.max(maximum, math.abs((corner-actualTop):Dot(actualUp)/actualUp.Y))
+    end end
+    return maximum
+end
+function api.SurfaceReport()
+    return {confirmed=roadMeasurements.confirmed,maxPositionErrorStuds=roadMeasurements.maxPositionErrorStuds,
+        maxTopErrorStuds=roadMeasurements.maxTopErrorStuds,worstIndex=roadMeasurements.worstIndex}
+end
+
 local function matches(object, request, reuse)
     local owner = owners[object] or uuidOwners[objectUuid(object)]
     if owner and owner ~= request.index then return false, "object is already assigned to part " .. owner end
@@ -341,6 +363,13 @@ local function matches(object, request, reuse)
     local sizeError = (object.Size - request.size).Magnitude
     if sizeError > (reuse and 0.01 or 0.05) then return false, string.format("size differs by %.3f studs", sizeError) end
     if object.CFrame.RightVector:Dot(request.cf.RightVector) < 0.999 or object.CFrame.UpVector:Dot(request.cf.UpVector) < 0.999 then return false, "rotation/slope differs" end
+    local topError = roadSurfaceError(object, request)
+    if topError then
+        local scale = math.max(1, request.scale)
+        if positionError > .005 * scale or sizeError > .005 * scale then return false, "road position/size exceeds the smooth-surface tolerance" end
+        if (object.CFrame.RightVector-request.cf.RightVector).Magnitude > .00005 or (object.CFrame.UpVector-request.cf.UpVector).Magnitude > .00005 then return false, "road rotation exceeds the smooth-surface tolerance" end
+        if topError > .008 * scale then return false, string.format("road top differs by %.5f studs", topError) end
+    end
     if request.verifyAppearance then
         local actual, expected = object.Color, request.color
         local difference = Vector3.new(actual.R - expected.R, actual.G - expected.G, actual.B - expected.B).Magnitude
@@ -415,6 +444,13 @@ local function record(object, index, sent)
     owners[object] = index
     local uuid = objectUuid(object)
     if uuid then uuidOwners[uuid] = index end
+    local measurementRequest = makeRequest(index, origin, buildScale, appearance)
+    local topError = roadSurfaceError(object, measurementRequest)
+    if topError then
+        roadMeasurements.confirmed = roadMeasurements.confirmed + 1
+        roadMeasurements.maxPositionErrorStuds = math.max(roadMeasurements.maxPositionErrorStuds, (object.Position-measurementRequest.cf.Position).Magnitude)
+        if topError >= roadMeasurements.maxTopErrorStuds then roadMeasurements.maxTopErrorStuds, roadMeasurements.worstIndex = topError, index end
+    end
     api.Placed[index] = object
     if sent then
         api.SentCount = api.SentCount + 1
@@ -541,7 +577,7 @@ function api.Save(slot)
 assert(not busy,"Pause the builder and wait for its current placement or save")
 return requestSlotSave(slot,false)
 end
-local AUTO_GROUPS = {{"barriers",1,213}}
+local AUTO_GROUPS = {{"barriers",1,207}}
 local function saveGroups(first,last)
     local names={}
     for _,group in ipairs(AUTO_GROUPS) do

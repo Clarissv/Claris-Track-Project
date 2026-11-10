@@ -5,7 +5,9 @@ import {overlapVertices,topHeight,topFootprint} from './surface-audit.mjs';
 // Fit the smallest oriented rectangle containing the lane samples. This replaces
 // the extra overlap allowance and angle-based extension in the previous builder.
 export function fittedSlab(points,a,b,{width,bias=0,thickness=.5,color=1,lift=0,guard=.006}={}){
-  const p=makeSlab(points[a],points[b],width??Math.max(...points.slice(a,b+1).map(p=>p.wr+p.wl)),bias,thickness,color,lift,0),basis=boxBasis(p),top=add(p.slice(0,3),mul(basis.up,thickness/2));
+  const plane=points[a].surfacePlane;
+  const endpoint=q=>plane?{...q,normal:points[a].normal,pos:[q.pos[0],plane.height+plane.gx*(q.pos[0]-plane.x)+plane.gz*(q.pos[2]-plane.z),q.pos[2]]}:q;
+  const p=makeSlab(endpoint(points[a]),endpoint(points[b]),width??Math.max(...points.slice(a,b+1).map(p=>p.wr+p.wl)),bias,thickness,color,lift,0),basis=boxBasis(p),top=add(p.slice(0,3),mul(basis.up,thickness/2));
   let w=0,l=0;
   for(let i=a;i<=b;i++){
     const q=points[i],h=Math.hypot(q.right[0],q.right[2]);

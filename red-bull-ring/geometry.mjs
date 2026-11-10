@@ -57,6 +57,7 @@ export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infi
   while(i<points.length-1) {
     let last=i+1;
     for(let j=i+2;j<points.length;j++) {
+      if(points[i].surfacePlane && points[j-1].surfacePlane.id!==points[i].surfacePlane.id)break;
       const a=points[i],b=points[j],axis=sub(b.pos,a.pos),length=Math.hypot(...axis);
       if(length>maxLength)break;
       const direction=unit(axis);let error=0,widthVariation=0,bankVariation=0;
@@ -66,7 +67,7 @@ export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infi
         const normal=points[k].normal,pitch=Math.atan(-(normal[0]*axis[0]+normal[2]*axis[2])/(normal[1]*horizontal));
         minPitch=Math.min(minPitch,pitch);maxPitch=Math.max(maxPitch,pitch);
       }
-      if(maxPitch-minPitch>maxPitchChange)break;
+      if(maxPitch-minPitch>maxPitchChange && !points[i].surfacePlane)break;
       if(a.right&&b.right) {
         const cosine=(a.right[0]*b.right[0]+a.right[2]*b.right[2])/(Math.hypot(a.right[0],a.right[2])*Math.hypot(b.right[0],b.right[2]));
         if(Math.acos(Math.max(-1,Math.min(1,cosine)))>maxTurn)break;
@@ -87,7 +88,7 @@ export function adaptiveSegments(points,maxLength=24,tolerance=0.07,maxTurn=Infi
           surfaceError=Math.max(surfaceError,Math.abs(dot(sub(sample,top),basis.up)));
         }
       }
-      if(surfaceError>planeTolerance)break;
+      if(surfaceError>planeTolerance && !points[i].surfacePlane)break;
       last=j;
     }
     segments.push([i,last]);i=last;

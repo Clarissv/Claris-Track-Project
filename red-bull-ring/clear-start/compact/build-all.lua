@@ -7,9 +7,9 @@ if _G.RedBullRingFullBuild then
     return _G.RedBullRingFullBuild
 end
 assert(not _G.RedBullRingClearStartCompactBuilder and not _G.RedBullRingBarriersBuilder, "This entry point starts a fresh build. Keep an existing builder and use its Build / Resume panel.")
-local ROAD_BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/releases/f78205c653c1bc354f82/"
-local BARRIER_BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/releases/9a8b122ade3ac5a48a29/"
-local TOTAL_OBJECTS = 8387
+local ROAD_BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/releases/c8e791ad3efdfa73e337/"
+local BARRIER_BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/releases/eecdee0b7d8f1bd885c5/"
+local TOTAL_OBJECTS = 5346
 local function download(base, name)
     local done, ok, body = false, false, nil
     task.spawn(function() ok,body=pcall(function() return game:HttpGet(base..name) end);done=true end)

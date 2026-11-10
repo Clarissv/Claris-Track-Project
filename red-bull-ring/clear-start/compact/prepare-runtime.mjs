@@ -10,6 +10,23 @@ for(const name of names){
   let source=adapt(fs.readFileSync(new URL(name,parent),'utf8'));
   if(name==='plan-loader.luau'||name==='test-builder.lua')source=source.replaceAll('"clear-start"','"clear-start-compact"');
   if(name==='builder-template.luau'){
+    source=source.replace('local function matches(object, request, reuse)',fs.readFileSync(new URL('road-surface-template.luau',here),'utf8')+'\nlocal function matches(object, request, reuse)');
+    source=source.replace('    if request.verifyAppearance then',`    local topError = roadSurfaceError(object, request)
+    if topError then
+        local scale = math.max(1, request.scale)
+        if positionError > .005 * scale or sizeError > .005 * scale then return false, "road position/size exceeds the smooth-surface tolerance" end
+        if (object.CFrame.RightVector-request.cf.RightVector).Magnitude > .00005 or (object.CFrame.UpVector-request.cf.UpVector).Magnitude > .00005 then return false, "road rotation exceeds the smooth-surface tolerance" end
+        if topError > .008 * scale then return false, string.format("road top differs by %.5f studs", topError) end
+    end
+    if request.verifyAppearance then`);
+    source=source.replace('    api.Placed[index] = object',`    local measurementRequest = makeRequest(index, origin, buildScale, appearance)
+    local topError = roadSurfaceError(object, measurementRequest)
+    if topError then
+        roadMeasurements.confirmed = roadMeasurements.confirmed + 1
+        roadMeasurements.maxPositionErrorStuds = math.max(roadMeasurements.maxPositionErrorStuds, (object.Position-measurementRequest.cf.Position).Magnitude)
+        if topError >= roadMeasurements.maxTopErrorStuds then roadMeasurements.maxTopErrorStuds, roadMeasurements.worstIndex = topError, index end
+    end
+    api.Placed[index] = object`);
     source=source.replace('MaxObjects = 9999','MaxObjects = 8998');
     source=source.replace(/local AUTO_GROUPS = [^\r\n]+/,()=>`local AUTO_GROUPS = {${Object.entries(plan.meta.groups).map(([name,indices])=>`{"${name}",${indices[0]+1},${indices.at(-1)+1}}`).join(',')}}`);
     source=source.replace('    local folder = workspace:FindFirstChild("EditableBuilds")\n    assert(folder, "EditableBuilds is missing; enable build tools")','    assert(not (_G.RedBullRingClearStartBuilder and _G.RedBullRingClearStartBuilder.State == "building"), "Pause the original clear-start builder before building compact terrain")\n    local folder = workspace:FindFirstChild("EditableBuilds")\n    assert(folder, "EditableBuilds is missing; enable build tools")');
@@ -31,6 +48,7 @@ placedCountOverride = function() return 8998 end
 assert(not pcall(api.Build) and #calls == 0, "Compact must block placement when existing objects would exceed its target")
 placedCountOverride = nil
 standardSentinel.State`);
+  if(name==='test-builder.lua')source=source.replace('-- HTTP_LOADER_TESTS',fs.readFileSync(new URL('test-road-surface.lua',here),'utf8')+'\n-- HTTP_LOADER_TESTS');
   if(name==='test-builder.ps1')source=source.replaceAll('RedBullRingClearStartLuaNative','RedBullRingClearStartCompactLuaNative');
   fs.writeFileSync(new URL(name,here),source);
 }

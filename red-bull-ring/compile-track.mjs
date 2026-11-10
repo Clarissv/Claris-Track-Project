@@ -2,6 +2,7 @@ import {scaleReference,scaleGround,densifyDriving} from './layout.mjs';
 import {connectedPitLayout} from './pit-layout.mjs';
 import {addContinuousKerbs,addCornerAprons,fitKerbsToLane} from './track-tidy.mjs';
 import {smoothWorldSurface} from './world-surface.mjs';
+import {gradeSurface} from './graded-surface.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -63,11 +64,13 @@ export function compileTrack(reference,features,ground,options={}){
   const worldGradientSmoothing=smoothWorldSurface(points,settings.worldGradientSigma*settings.layoutScale,settings.layoutScale);
   points=densifyDriving(points,2);
   for(const p of points){const factor=Math.max(1,40/(p.wr+p.wl));p.wr*=factor;p.wl*=factor;}
+  const gradedSurface=settings.gradedRampLength?gradeSurface(points,{length:settings.gradedRampLength}):null;
   const revisedPit=pitRoute(features.pitPoints,points,reference.points,settings.pitWidth,features.pitRoute,settings.pitSeparation??0,settings.pitSingleTurns??false),pit=revisedPit.points;
   const parts=[],groups={},push=(group,p)=>{(groups[group]??=[]).push(parts.length);parts.push(p);return parts.length-1;};
   const initial=adaptiveSegments(points,settings.roadMaxLength,settings.roadTolerance,settings.roadMaxTurnDegrees*Math.PI/180,settings.roadPlaneTolerance,settings.roadMaxPitchChangeDegrees*Math.PI/180,1.25);
   const fitted=refineRoad(points,initial,{thickness:settings.roadThickness,maxStep:settings.jointMaxStep});
   const roadSegments=fitted.spans.map((s,i)=>({...s,index:push('asphalt',fitted.parts[i])}));
+  for(const p of points)delete p.surfacePlane;
   const pitInitial=settings.pitSingleTurns?adaptiveSegments(pit,80,.06,2*Math.PI/180,.004,.06*Math.PI/180):adaptiveSegments(pit,96,.06,2*Math.PI/180,.014,.13*Math.PI/180),pitFit=refineRoad(pit,pitInitial,{closed:false,thickness:settings.roadThickness,maxStep:settings.jointMaxStep});
   const offset=(p,d)=>add(p.pos,mul(p.right,d/Math.hypot(p.right[0],p.right[2])));
   const paint=(line,group)=>{const spans=[];for(const [a,b] of adaptiveSegments(line,128,.12,4*Math.PI/180,.012)){const part=fittedSlab(line,a,b,{width:.36,thickness:.04,color:4,lift:.012});spans.push({index:push(group,part),start:a,end:b});}return spans;};
@@ -136,6 +139,7 @@ export function compileTrack(reference,features,ground,options={}){
   const anchor=pit[Math.floor(pit.length*.34)].pos;
   const meta={format:'red-bull-ring-elevated-v1',variant:'terrain',name:'Red Bull Ring',gameTarget:{name:'Jakarta',placeId:14005966837,saveObjectLimit:null},scope:'Elevated Spielberg circuit, pit lane, low kerbs, edge lines, gravel and runoff; scenery excluded',partCount:parts.length,palette,planBounds:bounds,width:round(bounds.max[0]-bounds.min[0]),depth:round(bounds.max[2]-bounds.min[2]),sourceSha256:reference.sourceSha256,centerlineSha256:reference.centerlineSha256,referenceSha256:sourceReferenceSha,layoutScale:settings.layoutScale,lapLengthMetres:reference.lapLengthMetres,lapLengthStuds:points.at(-1).s,studsPerMetre:reference.studsPerMetre,pitRoute:features.pitRoute,groundLift:-datum,retainedHeightRange:[Math.min(...points.map(p=>p.pos[1])),Math.max(...points.map(p=>p.pos[1]))],settings,groups,groupCounts:Object.fromEntries(Object.entries(groups).map(([k,v])=>[k,v.length])),roadSegments,edgeMarkingSegments,kerbSpans,kerbRuns,runoffSpans,pitSegments,pitPoints:pit,pitLane:{widthStuds:settings.pitWidth,lengthStuds:pit.at(-1).s},placementAnchor:{name:'pit-entry',position:[anchor[0],0,anchor[2]],roadHeight:anchor[1]},outputScale:2*settings.layoutScale,catalogRoles:[{name:'Others75',appearance:'color',partIndices:[...groups.asphalt,...groups.pitLane],preserveTemplateMaterial:true,color:[65,66,66]}],nonCollidingPartIndices:[...(groups.edgeMarkings??[]),...(groups.pitMarkings??[]),...(groups.startFinish??[])],limitations:['Road pieces are fitted rectangular blocks with small essential overlaps at bends.','The source pit route is smoothed and its connection is adapted to the widened racing road.','Kerbs and runoff use model material/colour cross-sections, with tiny texture fragments merged.','Stored byte/object limits cannot be inferred from the client export.']};
   meta.pitLayout=revisedPit.meta;
+  if(gradedSurface)meta.gradedSurface=gradedSurface;
   if(features.tidy)meta.surfaceTidying={kerbRuns:features.tidy.kerbRuns,cornerAprons:aprons.patches,sandKeepRange:features.tidy.sandKeepRange,kerbSurfaceFit:{method:'nominal-lane-overlap',modified:curbFit.modified,maximumLoweringStuds:curbFit.maximumLowering}};
   const plan={meta,parts,centerline:points.map(p=>[...p.pos,p.wr,p.wl,p.s,...p.normal])};
   meta.surfaceSmoothing={before:profileMetrics(reference.points),after:profileMetrics(points),worldGradientSmoothing,roadJoins:auditJoins(plan,roadSegments,true),pitJoins:auditJoins(plan,pitSegments,false),roadCount:groups.asphalt.length,medianRoadLengthStuds:groups.asphalt.map(i=>parts[i][5]).sort((a,b)=>a-b)[Math.floor(groups.asphalt.length/2)],overlapGuardStuds:.006};
