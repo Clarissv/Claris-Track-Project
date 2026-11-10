@@ -20,12 +20,12 @@ local CONFIG = {
     YawDegrees = 0,
     Scale = 1, -- Additional multiplier; the plan already uses the accepted vehicle scale.
     PlacementInterval = 0.10,
-    PlacementTimeout = 10,
+    PlacementTimeout = 30,
     StreamingTimeout = 5, -- Ask Roblox to stream distant placement areas when enabled.
-    FollowBuild = false, -- Move your character near the active section while building.
+    FollowBuild = true, -- Move your character near the active section while building.
     FollowDistance = 48,
     FollowHeight = 12,
-    FollowSettleTime = 0.10,
+    FollowSettleTime = 0.75,
     MaxObjects = 213,
     ServerObjectLimit = 10000, -- Local count guard; Jakarta's server save cap is not established by the export.
     SaveObjectLimit = nil, -- Set only to a confirmed Jakarta save limit; includes other placed objects.
@@ -355,7 +355,7 @@ end
 local function requestStream(request, force)
     request.streaming = workspace.StreamingEnabled == true
     if not request.streaming then return end
-    if CONFIG.FollowBuild then
+    if CONFIG.FollowBuild and not force then
         request.streamSkipped = "character follow"
         return
     end
@@ -659,7 +659,14 @@ function api.Build()
         local moved, object, reason = pcall(function()
             followTarget(pending)
             requestStream(pending, true)
-            return findPlacement(folder, pending)
+            local object, reason
+            local deadline = os.clock() + CONFIG.PlacementTimeout
+            repeat
+                object, reason = findPlacement(folder, pending)
+                if object or reason or paused then break end
+                task.wait(0.1)
+            until os.clock() >= deadline
+            return object, reason
         end)
         releaseFollower()
         assert(moved, object)

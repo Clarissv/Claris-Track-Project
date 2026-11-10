@@ -55,7 +55,7 @@ local target=api.GetTarget(1)
 assert(target.name=="Others68" and target.material=="Concrete" and target.materialVariant=="" and target.color.R==65/255,"Main barriers must use colourable native concrete, without steel")
 assert((target.origin.Position-baseOrigin.Position).Magnitude<.000001 and target.scale==baseScale,"Barrier transform must ignore current driving position")
 assert((target.cf.Position-road.GetTarget(1).cf.Position).Magnitude<.000001,"Rotated/scaled road alignment differs")
-assert(api.Config.FollowBuild==false,"Default add-on must allow the user to keep driving")
+assert(api.Config.FollowBuild==true,"Default add-on must stay near placements for streaming")
 local savedRead=readfile
 readfile=nil;_G.RedBullRingClearStartCompactBuilder=nil
 assert(not pcall(loadBuilder,nil,"fixture-json") and _G.RedBullRingBarriersBuilder==api,"Missing base must preserve the current add-on")
@@ -113,7 +113,7 @@ local messages=child(network:FindFirstChild("RemoteEvents"),"RemoteEvent","ChatM
 local saveRemote=child(network:FindFirstChild("RemoteEvents"),"RemoteEvent","BuildSaver")
 local saves={}
 function saveRemote:FireServer(action,slot)
-    assert(action=="Save" and slot==3 and not root.Anchored,"Save must use chosen slot and keep driving available")
+    assert(action=="Save" and slot==3,"Save must use the chosen slot")
     saves[#saves+1]={count=_G.RedBullRingBarriersBuilder.ExpectedServerCount,at=clock,placements=#calls}
     if #saves>1 then assert(clock-saves[#saves-1].at>=31,"Autosave must respect shared cooldown") end
     messages.OnClientEvent:Fire("Your buildings were successfully saved")
@@ -147,5 +147,6 @@ stripes:Destroy();roadTemplate.Shape="Ball"
 api=newSession();api.Unload();fixtureDocument.meta.catalogRoles={{name="Others68",appearance="template",partIndices={1}}};api=loadBuilder(nil,"fixture-json")
 assert(not pcall(api.Build) and api.NextIndex==1,"Concrete must still have plain rectangular collision geometry")
 roadTemplate.Shape="Block";manifest.InvokeServer=originalManifest
+-- STREAMING_TESTS
 -- FULL_BUILD_TESTS
 return "PASS: barriers inherit rotated/scaled base, preserve road, reject mismatches, pause/checkpoint/resume, prevent duplicates, and save combined counts"

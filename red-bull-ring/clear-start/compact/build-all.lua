@@ -8,7 +8,7 @@ if _G.RedBullRingFullBuild then
 end
 assert(not _G.RedBullRingClearStartCompactBuilder and not _G.RedBullRingBarriersBuilder, "This entry point starts a fresh build. Keep an existing builder and use its Build / Resume panel.")
 local ROAD_BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/releases/f78205c653c1bc354f82/"
-local BARRIER_BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/releases/9971176d80bb12e8a60e/"
+local BARRIER_BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/releases/9a8b122ade3ac5a48a29/"
 local TOTAL_OBJECTS = 8387
 local function download(base, name)
     local done, ok, body = false, false, nil
@@ -105,5 +105,5 @@ end
 heartbeat=game:GetService("RunService").Heartbeat:Connect(function()
     if not api.Running and api.Active and api.State~="complete" and finalSaveConfirmed(api.Active) then api.Resume() end
 end)
-print("[Red Bull Ring full build] "..TOTAL_OBJECTS.." placed objects including grass; saves replace slot "..slot..".")
+print("[Red Bull Ring full build] "..TOTAL_OBJECTS.." placed objects including grass; saves replace slot "..slot..". Stand outside your vehicle; your character follows the placements for streaming.")
 return api.Resume()

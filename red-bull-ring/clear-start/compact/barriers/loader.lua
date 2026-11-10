@@ -6,8 +6,8 @@ if mode == "autosave" then
 end
 local isSlot = type(mode) == "number" or type(mode) == "string" and mode:match("^[1-4]$")
 if isSlot then mode = tonumber(mode); assert(mode and mode >= 1 and mode <= 4 and mode % 1 == 0, "Choose a save slot from 1 to 4") end
-assert(isSlot or mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose" or mode == "autosave", "Red Bull Ring: expected build, resume, checkpoint, diagnose, autosave or a save slot from 1 to 4")
-local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/releases/9971176d80bb12e8a60e/"
+assert(isSlot or mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose" or mode == "autosave" or mode == "continue", "Red Bull Ring: expected build, resume, checkpoint, continue, diagnose, autosave or a save slot from 1 to 4")
+local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/releases/9a8b122ade3ac5a48a29/"
 local CHECKPOINT = "red-bull-ring-barriers-jakarta-checkpoint.json"
 local function download(name)
     local url = BASE .. name
@@ -28,6 +28,7 @@ local function compile(name)
     return fn
 end
 if isSlot then return compile("red-bull-ring-save.lua")(mode) end
+if mode == "continue" then return compile("red-bull-ring-continue.lua")() end
 if mode == "diagnose" then return compile("red-bull-ring-diagnose.lua")() end
 if mode == "checkpoint" then
     assert(_G.RedBullRingBarriersBuilder, "Red Bull Ring: keep the current builder loaded to save a checkpoint")

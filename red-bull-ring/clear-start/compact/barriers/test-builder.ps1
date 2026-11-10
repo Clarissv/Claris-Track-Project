@@ -40,6 +40,10 @@ try {
     $fixture = $fixture.Replace('-- RED_BULL_RING_DIAGNOSTIC', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-diagnose.lua')))
     $fixture = $fixture.Replace('-- RED_BULL_RING_CHECKPOINT', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-checkpoint.lua')))
     $fixture = $fixture.Replace('-- SAVE_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-save.lua')))
+    $streamTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-streaming.lua'))
+    $streamTests = $streamTests.Replace('-- CONTINUE_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-continue.lua')))
+    $streamTests = $streamTests.Replace('-- LEGACY_BARRIER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'releases\9971176d80bb12e8a60e\red-bull-ring-builder.lua')))
+    $fixture = $fixture.Replace('-- STREAMING_TESTS', $streamTests)
     $allTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-all.lua')).Replace('-- FULL_BUILD_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\build-all.lua')))
     $fixture = $fixture.Replace('-- FULL_BUILD_TESTS', $allTests)
     if ($HttpLoader) {

@@ -8,6 +8,7 @@ assert(httpLoader()==existing and #calls==beforeCalls,"Repeated loadstring must 
 for _,mode in ipairs({"recovery","wrong"}) do assert(not pcall(httpLoader,mode) and #calls==beforeCalls,"Unsupported mode must be rejected") end
 local originalLoad=loadstring
 local downloaded={}
+local continuations=0
 game.HttpGet=function(self,url)
     downloaded[#downloaded+1]=url
     if url:match("red%-bull%-ring%-save.lua$") then return "save-source" end
@@ -15,6 +16,7 @@ game.HttpGet=function(self,url)
     if url:match("runtime%-plan.json$") then return "fixture-json" end
     if url:match("red%-bull%-ring%-builder.lua$") then return "builder-source" end
     if url:match("red%-bull%-ring%-diagnose.lua$") then return "diagnose-source" end
+    if url:match("red%-bull%-ring%-continue.lua$") then return "continue-source" end
     error("Unexpected URL "..url)
 end
 loadstring=function(source)
@@ -22,10 +24,12 @@ loadstring=function(source)
     if source=="checkpoint-source" then return checkpointBuilder end
     if source=="builder-source" then return loadBuilder end
     if source=="diagnose-source" then return diagnoseBuilder end
+    if source=="continue-source" then return function() continuations=continuations+1;return _G.RedBullRingBarriersBuilder end end
     error("Unexpected source "..source)
 end
 assert(httpLoader(3).status=="success" and #calls==beforeCalls,"HTTP save must use separate add-on")
 local cp=httpLoader("checkpoint");assert(cp.expectedServerCount==8296 and cp.requiredBase.checksum=="base-checksum","HTTP checkpoint must include base requirements")
+assert(httpLoader("continue")==existing and continuations==1 and #calls==beforeCalls,"HTTP continuation must load the helper and retain the current API and prefix")
 existing.Unload();_G.RedBullRingClearStartCompactBuilder=nil
 local resumed=httpLoader("resume")
 assert(resumed.NextIndex==3 and resumed.ExpectedServerCount==8296 and #calls==beforeCalls,"HTTP resume must keep exact completed prefix")

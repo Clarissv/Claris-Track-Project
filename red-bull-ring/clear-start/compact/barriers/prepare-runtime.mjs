@@ -7,7 +7,19 @@ function replace(s,a,b){if(!s.includes(a))throw Error(`Missing adaptation: ${a}`
 const plan=JSON.parse(fs.readFileSync(new URL('barrier-plan.json',here)));
 let builder=adapt(read('builder-template.luau'));
 builder=replace(builder,'MaxObjects = 8998',`MaxObjects = ${plan.parts.length}`);
-builder=replace(builder,'FollowBuild = true','FollowBuild = false');
+builder=replace(builder,'FollowSettleTime = 0.10','FollowSettleTime = 0.75');
+builder=replace(builder,'PlacementTimeout = 10','PlacementTimeout = 30');
+// Stay near placements by default. A successful server placement can otherwise
+// stream out before ChildAdded/geometry confirmation reaches this client.
+builder=replace(builder,'if CONFIG.FollowBuild then\n        request.streamSkipped', 'if CONFIG.FollowBuild and not force then\n        request.streamSkipped');
+builder=replace(builder,'            return findPlacement(folder, pending)',`            local object, reason
+            local deadline = os.clock() + CONFIG.PlacementTimeout
+            repeat
+                object, reason = findPlacement(folder, pending)
+                if object or reason or paused then break end
+                task.wait(0.1)
+            until os.clock() >= deadline
+            return object, reason`);
 builder=replace(builder,'local variant = roleIndex and (template.MaterialVariant or "") or ""','local variant = roleIndex and (template.MaterialVariant or "") or (style[3] or "")');
 builder=replace(builder,'local color = roleIndex and not apply and template.Color or style[1]','local color = roleIndex and (not apply or CATALOG_ROLES[roleIndex].appearance == "template") and template.Color or style[1]');
 builder=replace(builder,'function api.Preview()','function api.Preview()\n    if not selected then api.Inspect() end');
@@ -108,8 +120,9 @@ for(const name of ['red-bull-ring-save.lua','red-bull-ring-diagnose.lua']){
   write(name,s);
 }
 let github=adapt(read('github-loader-template.luau'));
-github=github.replace(' or mode == "recovery"','').replace('checkpoint, recovery, diagnose','checkpoint, diagnose');
+github=github.replace(' or mode == "recovery"',' or mode == "continue"').replace('checkpoint, recovery, diagnose','checkpoint, continue, diagnose');
 github=github.replace(/^if mode == "recovery"[^\n]*\n/gm,'');
+github=replace(github,'if mode == "diagnose" then','if mode == "continue" then return compile("red-bull-ring-continue.lua")() end\nif mode == "diagnose" then');
 github=replace(github,'print("[Red Bull Ring] Loading the Jakarta circuit builder and track data from GitHub...")',`if _G.RedBullRingBarriersBuilder and mode ~= "resume" then
     local api = _G.RedBullRingBarriersBuilder
     api.Show()

@@ -44,6 +44,8 @@ The current stage panel provides Pause and Build / Resume. Resuming the road
 through its panel still hands off to barriers automatically. Repeating the
 loadstring shows the existing stage without resetting progress. Unconfirmed
 placements or failed saves stop the build; they are not automatically resent.
+Your character follows the placements by default so distant barriers remain
+streamed in during confirmation. Step out of the car before building.
 
 ## Existing builds and checkpoints
 
@@ -51,6 +53,19 @@ The separate `barriers/loader.lua` remains available for adding barriers to the
 completed matching road, and for its checkpoint, resume, diagnose and slot-save
 modes. Its builder inherits the road's exact origin, rotation and scale.
 Checkpoints from the previous steel layout do not match this barrier geometry.
+
+If a previous concrete barrier run stopped on an accepted object that streamed
+out, keep its current session open, step out of the car and run:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/loader.lua"))("continue")
+```
+
+This works with the older live builder as well. It verifies that the pending
+request is the only extra server object, moves nearby, waits for its exact
+geometry to replicate, then uses the existing API to confirm it and finish.
+It retains the road, confirmed barriers, transform, count and autosave state.
+The accepted placement is never resent. Your character returns afterward.
 
 For a later manual save, use the barrier panel, which includes the full count;
 the original road builder still describes the base alone. Export the active

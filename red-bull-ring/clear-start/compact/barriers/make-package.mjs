@@ -8,7 +8,7 @@ const builder=read('builder-template.luau').replace('-- GENERATED_DATA',()=>read
 fs.writeFileSync(new URL('red-bull-ring-builder.lua',here),builder);
 const {chains,audit,groups,...runtimeMeta}=plan.meta;
 const assets={'red-bull-ring-builder.lua':Buffer.from(builder),'runtime-plan.json':Buffer.from(JSON.stringify({meta:runtimeMeta,parts:plan.parts})),'build-all-template.luau':Buffer.from(read('build-all-template.luau'))};
-for(const n of ['red-bull-ring-save.lua','red-bull-ring-checkpoint.lua','red-bull-ring-diagnose.lua'])assets[n]=Buffer.from(read(n));
+for(const n of ['red-bull-ring-save.lua','red-bull-ring-checkpoint.lua','red-bull-ring-diagnose.lua','red-bull-ring-continue.lua'])assets[n]=Buffer.from(read(n));
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex'),hash=crypto.createHash('sha256');
 for(const [name,body] of Object.entries(assets))hash.update(name).update('\0').update(body);
 const version=hash.digest('hex').slice(0,20),release=new URL(`releases/${version}/`,here);fs.mkdirSync(release,{recursive:true});

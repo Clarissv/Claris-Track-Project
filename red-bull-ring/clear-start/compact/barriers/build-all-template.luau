@@ -105,5 +105,5 @@ end
 heartbeat=game:GetService("RunService").Heartbeat:Connect(function()
     if not api.Running and api.Active and api.State~="complete" and finalSaveConfirmed(api.Active) then api.Resume() end
 end)
-print("[Red Bull Ring full build] "..TOTAL_OBJECTS.." placed objects including grass; saves replace slot "..slot..".")
+print("[Red Bull Ring full build] "..TOTAL_OBJECTS.." placed objects including grass; saves replace slot "..slot..". Stand outside your vehicle; your character follows the placements for streaming.")
 return api.Resume()
