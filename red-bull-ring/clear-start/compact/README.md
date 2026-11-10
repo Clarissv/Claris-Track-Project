@@ -1,5 +1,10 @@
 # Red Bull Ring with compact terrain
 
+For the complete road, terrain and tidied concrete barriers in one automatic
+run, see [the full-build instructions](barriers/README.md). That build contains
+**8,387 total Parts**, including the original grass plate, and autosaves to slot 3.
+The road-only package below remains at 8,174 objects.
+
 **8,173 placed parts; 8,174 total with one existing grass plate.** This pit and
 road revision uses **444 fewer parts** than the preceding smooth compact
 version, and 1,330 fewer than the original clear-start build. The horizontal

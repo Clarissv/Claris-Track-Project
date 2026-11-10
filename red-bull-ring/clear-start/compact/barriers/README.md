@@ -1,73 +1,71 @@
-# Red Bull Ring GLB barriers
+﻿# Red Bull Ring tidy concrete barriers
 
-**747 extra parts: 650 steel and 97 concrete. 8,921 total objects with the matching road and original grass plate.**
+**213 additional Parts: 184 grey runs and 29 retained concrete terminals.
+8,387 total Parts with the matching road, terrain and original grass plate.**
 
-The paths come from the Red Bull Ring GLB, replacing the generated perimeter
-walls. Steel uses the identified **DiamondPlate / Diamond Plate 1** appearance.
-The native Others88 object is composite, so fitted rectangular rails approximate
-its profile and posts. Concrete uses the **Others68** Part, retaining its native
-material, colour, variant and striped decorations when present. GLB concrete
-material 88 mainly contains short low sections and terminals.
+All barriers use the resizable **Others68 concrete Part**. Main runs are grey;
+retained GLB concrete terminals keep the template's native appearance and
+decorations. Others88 and steel materials are no longer placed.
 
-The pit straight is free of barriers. Entry and exit keep their GLB reference
-sections, with open joins where the pit meets the racing road. Source paths are
-locally moved by up to 179.9 studs to
-fit the revised runoffs, road clearance and outer terrain. 54
-crossings at roads or abrupt outer-terrain steps are split into openings.
-Steel bracket spurs under 20 studs are omitted. Walls have overlapping ends
-within each retained chain and buried bottoms; checked visible height is at
-least 3.36 studs. The full pit-straight corridor is
-checked against complete fitted footprints, including detours.
+Paths follow the Red Bull Ring GLB, adapted to the revised recovery areas.
+Long straight sections replace the previous detour clutter. Short bracket
+spurs, 14 fitted hooks and 18 isolated concrete pieces are omitted. Connections
+that would cross a road or abrupt outer-terrain step remain open instead of
+forming loops. Retained main sections have no backtracking or pieces shorter
+than 25 studs. They extend up to about 320 studs where the ground permits.
 
-**This revision requires a fresh matching base build:** road release
-`f78205c653c1bc354f82`, **8,173 road/terrain parts**.
-The pit has one entry curve, one continuous straight and one rounded exit,
-an 18-stud lane and at least 25 studs of building space. Its empty 400?400
-starting square follows the pit direction and keeps the same centre. Older
-compact roads and their barrier checkpoints cannot resume this geometry.
+The entire pit straight stays open; entry and exit retain reference sections.
+Complete footprints are checked against the pit corridor and empty starting
+square. Barriers intersect no driving solids, have buried bottoms, and expose
+at least 3.35 studs above the ground. Outer-terrain gaps remain where continuous
+fencing would require unsafe detours.
 
-After pushing the prepared files, build the base in a fresh Jakarta session
-with only the original grass plate. Enable Build Tools and run:
+The base remains road release `f78205c653c1bc354f82`: **8,173 placed Parts**,
+18-stud pit width, at least 25 studs of building space, one entry curve and one
+rounded exit. The 400 x 400 starting square keeps its centre and pit alignment.
 
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/loader.lua"))("autosave", 3)
-```
+## One loadstring for the complete build
 
-Use Inspect, then Build / Resume. After the base finishes, keep its builder
-loaded and run:
+Push the files, start a fresh Jakarta build containing only the original grass
+plate, enable Build Tools, and stand where the empty starting area's centre
+should be. Run as the server owner with Build Tools Plus access:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/loader.lua"))("autosave", 3)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/build-all.lua"))(3)
 ```
 
-Use Inspect catalog, then Build / Resume. The add-on inherits the road's exact
-origin, rotation and scale. Character following starts off so you can drive;
-pause and use Follow placement if distant placements need it. Appearance
-controls use the game's existing Build Tools Plus access.
+This starts automatically, builds road and terrain first, confirms that stage's
+slot save, then builds the concrete barriers and confirms the final combined
+save. **Autosaves replace slot 3.** Both stages use pinned releases and the
+shared 31-second save cooldown. The console prints `DONE` only after the final
+8,387-object save is confirmed.
 
-Autosave pauses placement and shares the 31-second save cooldown. It replaces
-slot 3 and saves the combined count. Use the barrier loader or panel for later
-saves, because the original road builder's count describes the base alone.
-There is room for 78 other objects beneath the
-9,000-object target.
+The current stage panel provides Pause and Build / Resume. Resuming the road
+through its panel still hands off to barriers automatically. Repeating the
+loadstring shows the existing stage without resetting progress. Unconfirmed
+placements or failed saves stop the build; they are not automatically resent.
 
-For a checkpoint, pause and use the barrier loadstring with `("checkpoint")`.
-Save the matching prefix to a game slot before leaving. After rejoining, load
-that slot and use `("resume")`, arm
-`_G.RedBullRingBarriersBuilder.EnableAutoSave(3)`, then Build / Resume.
-Its checkpoint retains the road transform and combined count. First-time
-barriers after rejoining can inherit a completed matching base checkpoint if
-the original road API is absent. Normal repeated loadstrings reuse live
-progress; `("diagnose")` checks placement, and `(3)` saves manually.
+## Existing builds and checkpoints
 
-[Highlighted GLB layout](barrier-overview.svg) ? [Pit straight](build-pit-lane.png) ?
-[Steel detail](build-steel-detail.png) ? [Concrete detail](build-concrete-detail.png)
+The separate `barriers/loader.lua` remains available for adding barriers to the
+completed matching road, and for its checkpoint, resume, diagnose and slot-save
+modes. Its builder inherits the road's exact origin, rotation and scale.
+Checkpoints from the previous steel layout do not match this barrier geometry.
 
-Offline previews show geometry and highlight concrete positions. The live
-Others68 template supplies its native stripes. Driving impacts, grip and
-live save/reload still need in-game verification.
+For a later manual save, use the barrier panel, which includes the full count;
+the original road builder still describes the base alone. Export the active
+stage's checkpoint and save the matching game slot before leaving mid-build.
+The one-load entry point is for a fresh build, not restoring an old game slot.
+
+[Highlighted reference layout](barrier-overview.svg) ·
+[Top-down preview](build-topdown.png) · [Pit straight](build-pit-lane.png) ·
+[Grey barrier detail](build-grey-detail.png) · [Concrete detail](build-concrete-detail.png)
+
+Geometry, catalog appearance, stage handoff, placement confirmation, pause,
+checkpoint and autosave contracts are checked offline. Driving and live
+save/reload still need in-game verification.
 
 From the repository root, run `npm.cmd test` and `npm.cmd run test:lua`.
 To regenerate, run `node generate.mjs`, `node prepare-runtime.mjs`, then
-`node make-package.mjs` in this directory. Source extraction and catalog
-identification are documented in [reference-review](reference-review/README.md).
+`node make-package.mjs` in this directory. Source extraction and historical
+catalog captures are documented in [reference-review](reference-review/README.md).

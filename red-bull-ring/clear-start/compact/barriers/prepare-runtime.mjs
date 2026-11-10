@@ -9,11 +9,11 @@ let builder=adapt(read('builder-template.luau'));
 builder=replace(builder,'MaxObjects = 8998',`MaxObjects = ${plan.parts.length}`);
 builder=replace(builder,'FollowBuild = true','FollowBuild = false');
 builder=replace(builder,'local variant = roleIndex and (template.MaterialVariant or "") or ""','local variant = roleIndex and (template.MaterialVariant or "") or (style[3] or "")');
-builder=replace(builder,'local color = roleIndex and not apply and template.Color or style[1]','local color = roleIndex and template.Color or style[1]');
+builder=replace(builder,'local color = roleIndex and not apply and template.Color or style[1]','local color = roleIndex and (not apply or CATALOG_ROLES[roleIndex].appearance == "template") and template.Color or style[1]');
 builder=replace(builder,'function api.Preview()','function api.Preview()\n    if not selected then api.Inspect() end');
 builder=replace(builder,'for i = 1, #PLAN do\n        local part = Instance.new("Part")','for i = 1, #PLAN do\n        local candidate = PART_ROLE[i] and roleSelected[PART_ROLE[i]]\n        local part = candidate and candidate.template:Clone() or Instance.new("Part")');
 builder=replace(builder,'part.Material = style[2]','part.Material, part.MaterialVariant = style[2], style[3] or ""');
-builder=replace(builder,'        local candidate = PART_ROLE[i] and roleSelected[PART_ROLE[i]]\n        if candidate then part.Material, part.MaterialVariant = candidate.template.Material, candidate.template.MaterialVariant or "" end','        if candidate then part.Color, part.Material, part.MaterialVariant = candidate.template.Color, candidate.template.Material, candidate.template.MaterialVariant or "" end');
+builder=replace(builder,'        local candidate = PART_ROLE[i] and roleSelected[PART_ROLE[i]]\n        if candidate then part.Material, part.MaterialVariant = candidate.template.Material, candidate.template.MaterialVariant or "" end','        if candidate then\n            if CATALOG_ROLES[PART_ROLE[i]].appearance == "template" then part.Color = candidate.template.Color end\n            part.Material, part.MaterialVariant = candidate.template.Material, candidate.template.MaterialVariant or ""\n        end');
 builder=replace(builder,'local function plainBlock(template)',`-- A concrete Part may carry the native striped decals/textures. They do
 -- not change its rectangular collision geometry; composite steel is excluded.
 local function concreteBlock(template)
@@ -39,6 +39,8 @@ builder=replace(builder,'function api.Build()','function api.Build()\n    assert
 builder=replace(builder,'local builders = {_G.RedBullRingBarriersBuilder,','local builders = {_G.RedBullRingBarriersBuilder, _G.RedBullRingClearStartCompactBuilder,');
 builder=replace(builder,'assert(currentCount >= api.NextIndex - 1,','assert(currentCount >= REQUIRED_BASE.count + api.NextIndex,');
 builder=replace(builder,'Start with the grass plate or load a matching compact prefix.','Load the completed matching road and barrier checkpoint.');
+builder=replace(builder,'currentCount + remainingCount < 9000','currentCount + remainingCount < 9500');
+builder=replace(builder,'Compact build exceeds its 8999 total-object target.','Full build exceeds its 9499 total-object target.');
 builder=builder.replace('Compact terrain: under 9000 total objects; clear 400 x 400 stud grass starting area.','Full-circuit barriers: add to the completed compact road.');
 builder=builder.replace('title.Text = "RED BULL RING BUILDER"','title.Text = "RED BULL RING BARRIERS"');
 builder=replace(builder,'button("Repair missing parts", 12, 350, api.Repair)',`button("Follow placement", 12, 350, function()
@@ -53,7 +55,7 @@ end`+builder.slice(repairEnd);
 write('builder-template.luau',builder);
 
 let loader=adapt(read('plan-loader.luau'));
-loader=replace(loader,'role.appearance == "color"','role.appearance == "template"');
+loader=replace(loader,'role.appearance == "color"','(role.appearance == "color" or role.appearance == "template")');
 loader=replace(loader,'local restoredCheckpoint','local REQUIRED_BASE = meta.requiredBase\nassert(type(REQUIRED_BASE) == "table" and finite(REQUIRED_BASE.count) and REQUIRED_BASE.count > 0 and REQUIRED_BASE.count % 1 == 0 and type(REQUIRED_BASE.checksum) == "string" and type(REQUIRED_BASE.version) == "string" and type(REQUIRED_BASE.references) == "table" and #REQUIRED_BASE.references > 0, "Missing matching road requirements")\nassert(meta.variant == "clear-start-compact-barriers", "Use the matching barrier plan")\nlocal INITIAL_SERVER_COUNT\nlocal restoredCheckpoint');
 loader=replace(loader,'PALETTE[i] = {Color3.fromRGB(entry.rgb[1], entry.rgb[2], entry.rgb[3]), material}','assert(entry.materialVariant == nil or type(entry.materialVariant) == "string", "Invalid barrier material variant")\n    PALETTE[i] = {Color3.fromRGB(entry.rgb[1], entry.rgb[2], entry.rgb[3]), material, entry.materialVariant or ""}');
 loader=replace(loader,'saved.expectedServerCount == saved.nextIndex','saved.expectedServerCount >= REQUIRED_BASE.count + saved.nextIndex');

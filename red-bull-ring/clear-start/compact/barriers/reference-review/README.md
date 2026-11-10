@@ -10,12 +10,12 @@ mapped to concrete. These are mostly small pieces, rather than long concrete
 runs. Source positions are fitted to the revised terrain and driving clearance;
 barriers beside the pit straight are removed while entry and exit sections stay.
 
-The user's catalog captures confirm **Others88** as composite steel, containing
-a UnionOperation and Parts, including **DiamondPlate / Diamond Plate 1**.
-**Others68** is the concrete Part with an empty MaterialVariant. The builder
-uses fitted rectangular steel rails with that appearance; it approximates the
-composite profile and posts. Concrete uses the native Others68 template and
-retains its material, colour, variant and striped decorations where present.
+The user's catalog captures identify **Others88** as the corrugated steel item
+and **Others68** as the resizable concrete Part. Following the user's revised
+choice, the current build uses Others68 for every barrier: grey on the former
+steel runs, native appearance on the retained concrete terminals. It places no
+Others88 and uses no steel material. The historical steel inspector remains
+available below as a reference tool.
 
 [Source reference map](reference-overview.png) shows steel in blue and concrete
 in gold. [Final fitted map](../barrier-overview.svg) highlights both roles.
@@ -25,8 +25,8 @@ in Jakarta after enabling Build Tools. It reads the catalog template directly,
 identifies the DiamondPlate / Diamond Plate 1 panel, and prints one
 `STEEL_ORIENTATION` JSON report with its root class, dimensions, component
 transforms and the rotation that makes the broad textured panel upright.
-No placement or held-preview edits are made. The current barrier loader still
-uses plain steel rails; the native report is needed to fit and rotate Others88.
+No placement or held-preview edits are made. The current concrete-only barrier
+loader does not require the steel report.
 
 To identify the actual game assets, open Jakarta Build Tools and load the
 standalone inspector:

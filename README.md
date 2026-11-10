@@ -70,13 +70,13 @@ inspect the catalog and preview before building. See the variant's README for
 its supported checkpoint, resume and diagnostic modes. Old loadstrings with
 the previous directory paths must be replaced with the URLs above.
 
-Red Bull Ring with compact terrain, autosaving to slot 3:
+Complete Red Bull Ring with compact terrain and concrete barriers, autosaving to slot 3:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/loader.lua"))("autosave", 3)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/build-all.lua"))(3)
 ```
 
-This version needs a fresh build and contains **8,174 objects including grass**.
+This version starts automatically in a fresh build and contains **8,387 objects including grass**.
 It retains the horizontal racing layout, smooths the road and grass/runoff
 transitions, and widens the pit to 18 studs with a minimum 25-stud building gap.
 It removes the extra pit bends and uses 120 fewer parts than the previous compact road. See its
@@ -84,13 +84,11 @@ instructions before replacing a saved slot.
 
 ## Checks and maintenance
 
-The compact Red Bull Ring also has a [full-circuit barrier add-on](red-bull-ring/clear-start/compact/barriers/README.md):
-**747 additional parts, 8,921 total objects including grass**, following the GLB steel and concrete paths. The pit straight stays open. Add it to the
-completed current compact road; it inherits that road's transform.
-
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/red-bull-ring/clear-start/compact/barriers/loader.lua"))("autosave", 3)
-```
+The [full-circuit barriers](red-bull-ring/clear-start/compact/barriers/README.md)
+add **213 concrete Parts** along tidied GLB paths. The pit straight stays open.
+The single entry point builds the 8,174-object base first, then adds barriers
+and confirms the final slot save. Its separate add-on loader remains available
+for a matching completed base and existing barrier checkpoints.
 
 From the repository root, run `npm test` for geometry, release hashes and
 repository layout checks. Run `npm run test:lua` for all eight builders and their

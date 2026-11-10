@@ -59,7 +59,7 @@ end
 local CATALOG_ROLES, PART_ROLE = meta.catalogRoles or {}, {}
 assert(type(CATALOG_ROLES) == "table", "Red Bull Ring: invalid catalog roles")
 for roleIndex, role in ipairs(CATALOG_ROLES) do
-    assert(type(role) == "table" and type(role.name) == "string" and #role.name > 0 and role.appearance == "template" and type(role.partIndices) == "table", "Red Bull Ring: invalid catalog role")
+    assert(type(role) == "table" and type(role.name) == "string" and #role.name > 0 and (role.appearance == "color" or role.appearance == "template") and type(role.partIndices) == "table", "Red Bull Ring: invalid catalog role")
     for _, index in ipairs(role.partIndices) do
         assert(finite(index) and index % 1 == 0 and index >= 0 and index < #PLAN and not PART_ROLE[index + 1], "Red Bull Ring: invalid or duplicate catalog role index")
         PART_ROLE[index + 1] = roleIndex

@@ -35,10 +35,13 @@ try {
     $baseMocks = $baseMocks.Substring(0, $baseMocks.IndexOf('local elevatedSentinel'))
     $baseMocks = $baseMocks.Replace('RedBullRingClearStartCompact','RedBullRingBarriers').Replace('red-bull-ring-clear-start-compact-jakarta-checkpoint','red-bull-ring-barriers-jakarta-checkpoint')
     $baseMocks = $baseMocks.Replace('return #builds:GetChildren() end','return 8294 + #builds:GetChildren() end')
+    $baseMocks = "local defaultBarrierRoles`n" + $baseMocks.Replace('fixtureDocument.meta.catalogRoles = nil','fixtureDocument.meta.catalogRoles = defaultBarrierRoles')
     $fixture = ($baseMocks + [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-cases.lua'))).Replace('-- RED_BULL_RING_SCRIPT', $source)
     $fixture = $fixture.Replace('-- RED_BULL_RING_DIAGNOSTIC', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-diagnose.lua')))
     $fixture = $fixture.Replace('-- RED_BULL_RING_CHECKPOINT', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-checkpoint.lua')))
     $fixture = $fixture.Replace('-- SAVE_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-save.lua')))
+    $allTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-all.lua')).Replace('-- FULL_BUILD_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\build-all.lua')))
+    $fixture = $fixture.Replace('-- FULL_BUILD_TESTS', $allTests)
     if ($HttpLoader) {
         $httpTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-http-loader.lua'))
         $httpTests = $httpTests.Replace('-- HTTP_LOADER_SOURCE', [IO.File]::ReadAllText((Resolve-Path -LiteralPath $HttpLoader).Path))

@@ -26,7 +26,7 @@ local CONFIG = {
     FollowDistance = 48,
     FollowHeight = 12,
     FollowSettleTime = 0.10,
-    MaxObjects = 747,
+    MaxObjects = 213,
     ServerObjectLimit = 10000, -- Local count guard; Jakarta's server save cap is not established by the export.
     SaveObjectLimit = nil, -- Set only to a confirmed Jakarta save limit; includes other placed objects.
     ApplyAppearance = true, -- Color/material controls require the game's Build Tools Plus access.
@@ -92,7 +92,7 @@ end
 local CATALOG_ROLES, PART_ROLE = meta.catalogRoles or {}, {}
 assert(type(CATALOG_ROLES) == "table", "Red Bull Ring: invalid catalog roles")
 for roleIndex, role in ipairs(CATALOG_ROLES) do
-    assert(type(role) == "table" and type(role.name) == "string" and #role.name > 0 and role.appearance == "template" and type(role.partIndices) == "table", "Red Bull Ring: invalid catalog role")
+    assert(type(role) == "table" and type(role.name) == "string" and #role.name > 0 and (role.appearance == "color" or role.appearance == "template") and type(role.partIndices) == "table", "Red Bull Ring: invalid catalog role")
     for _, index in ipairs(role.partIndices) do
         assert(finite(index) and index % 1 == 0 and index >= 0 and index < #PLAN and not PART_ROLE[index + 1], "Red Bull Ring: invalid or duplicate catalog role index")
         PART_ROLE[index + 1] = roleIndex
@@ -322,7 +322,7 @@ local function makeRequest(index, cf, scale, apply)
     local template = candidate.template
     -- Others75 receives the requested road colour while preserving its live
     -- material/variant. Other groups use the normal plain-block palette.
-    local color = roleIndex and template.Color or style[1]
+    local color = roleIndex and (not apply or CATALOG_ROLES[roleIndex].appearance == "template") and template.Color or style[1]
     local material = roleIndex and template.Material or style[2]
     local variant = roleIndex and (template.MaterialVariant or "") or (style[3] or "")
     return {index=index, name=candidate.entry.name, cf=frame, size=size,
@@ -436,7 +436,10 @@ function api.Preview()
         part.CFrame = target
         part.Color = style[1]
         part.Material, part.MaterialVariant = style[2], style[3] or ""
-        if candidate then part.Color, part.Material, part.MaterialVariant = candidate.template.Color, candidate.template.Material, candidate.template.MaterialVariant or "" end
+        if candidate then
+            if CATALOG_ROLES[PART_ROLE[i]].appearance == "template" then part.Color = candidate.template.Color end
+            part.Material, part.MaterialVariant = candidate.template.Material, candidate.template.MaterialVariant or ""
+        end
         part.TopSurface = Enum.SurfaceType.Smooth
         part.BottomSurface = Enum.SurfaceType.Smooth
         part.Parent = preview
@@ -681,7 +684,7 @@ function api.Save(slot)
 assert(not busy,"Pause the builder and wait for its current placement or save")
 return requestSlotSave(slot,false)
 end
-local AUTO_GROUPS = {{"barriers",1,747}}
+local AUTO_GROUPS = {{"barriers",1,213}}
 local function saveGroups(first,last)
     local names={}
     for _,group in ipairs(AUTO_GROUPS) do
@@ -816,7 +819,7 @@ function api.Build()
         assert(currentCount >= REQUIRED_BASE.count + api.NextIndex, "Load your saved partial build before resuming this checkpoint")
     end
     if not repairing then assert(currentCount + remainingCount <= CONFIG.ServerObjectLimit, string.format("%d existing + %d remaining exceeds the %d object limit; use Repair to inspect an existing matching build", currentCount, remainingCount, CONFIG.ServerObjectLimit)) end
-    if not repairing then assert(currentCount + remainingCount < 9000, "Compact build exceeds its 8999 total-object target. Load the completed matching road and barrier checkpoint.") end
+    if not repairing then assert(currentCount + remainingCount < 9500, "Full build exceeds its 9499 total-object target. Load the completed matching road and barrier checkpoint.") end
     if CONFIG.SaveObjectLimit ~= nil then
         assert(type(CONFIG.SaveObjectLimit) == "number" and CONFIG.SaveObjectLimit >= 1 and CONFIG.SaveObjectLimit < math.huge and CONFIG.SaveObjectLimit % 1 == 0, "SaveObjectLimit must be a confirmed positive integer")
         if not repairing then assert(currentCount + remainingCount <= CONFIG.SaveObjectLimit, string.format("%d existing + %d remaining exceeds the confirmed Jakarta save limit of %d", currentCount, remainingCount, CONFIG.SaveObjectLimit)) end
