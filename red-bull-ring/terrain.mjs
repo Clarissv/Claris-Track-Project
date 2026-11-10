@@ -5,6 +5,7 @@ import {terrainSlab} from './terrain-slab.mjs';
 import {unit} from './track-geometry.mjs';
 import {smoothDrivingPoints} from './smooth-surface.mjs';
 import {scaleGround} from './layout.mjs';
+import {topFootprint} from './surface-audit.mjs';
 function sampler(ground){
   return (x,z,fallback)=>{
     const gx=(x-ground.x0)/ground.cell-.5,gz=(z-ground.z0)/ground.cell-.5,ix=Math.floor(gx),iz=Math.floor(gz);let sum=0,total=0;
@@ -14,7 +15,7 @@ function sampler(ground){
     return total?sum/total:fallback;
   };
 }
-export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLength=96,outerMaxLength=160,outerTolerance=2.5,outerMaxTurn=20,outerWidthVariation=4,margin=384,...options}={}){
+export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLength=96,outerMaxLength=160,outerTolerance=2.5,outerMaxTurn=20,outerWidthVariation=4,recoveryShoulders=false,margin=384,...options}={}){
   rawGround=scaleGround(rawGround,base.meta.layoutScale??1);
   const ground={...rawGround,trackPlanDatum:base.meta.groundLift,heights:rawGround.heights.map(h=>h===null?null:h+base.meta.groundLift)};
   const bulk=buildTerrain(base,ground,{rootCell,minCell,margin,sourceTolerance:12,maxRoadGap:5,maxSlope:.32,...options}),start=base.parts.length;
@@ -29,18 +30,41 @@ export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLeng
     return {inner:turn>0?-1:1,value:(Math.hypot(...u)+Math.hypot(...v))/2/Math.max(1e-6,Math.abs(turn))};
   });
   const skirts=[],spans=[];
-  for(const side of [-1,1])for(const [inner,outer] of [[-.25,18],[18,250],[250,500]]){
+  const shoulderWidth=recoveryShoulders?48:18;
+  const recoveryWidths=Object.fromEntries([-1,1].map(side=>[side,new Array(route.length-1).fill(shoulderWidth)]));
+  if(recoveryShoulders){
+    // Carry the driving plane across the complete apron, including grass
+    // beyond its outer edge. Let the width taper gradually along the track.
+    for(const span of base.meta.runoffSpans??[]){
+      const polygon=topFootprint(base.parts[span.index]),widths=recoveryWidths[span.side];
+      for(let i=span.start;i<=span.end&&i<widths.length;i++){
+        const p=route[i],r=p.right,h=Math.hypot(r[0],r[2]),edge=span.side>0?p.wr:p.wl;
+        widths[i]=Math.max(widths[i],...polygon.map(([x,z])=>span.side*((x-p.pos[0])*r[0]+(z-p.pos[2])*r[2])/h-edge+16));
+      }
+    }
+    for(const widths of Object.values(recoveryWidths))for(let pass=0;pass<2;pass++){
+      for(let i=0;i<widths.length;i++){const j=(i+1)%widths.length,d=Math.hypot(route[j].pos[0]-route[i].pos[0],route[j].pos[2]-route[i].pos[2]);widths[j]=Math.max(widths[j],widths[i]-.25*d);}
+      for(let i=widths.length-1;i>=0;i--){const j=(i+widths.length-1)%widths.length,d=Math.hypot(route[j].pos[0]-route[i].pos[0],route[j].pos[2]-route[i].pos[2]);widths[j]=Math.max(widths[j],widths[i]-.25*d);}
+    }
+  }
+  const bands=recoveryShoulders?[[-.25,shoulderWidth],[shoulderWidth,250]]:[[-.25,18],[18,250],[250,500]];
+  for(const side of [-1,1])for(const [inner,outer] of bands){
     let line=route.slice(0,-1).map((p,i)=>{
       const r=p.right,h=Math.hypot(r[0],r[2]),edge=side>0?p.wr:p.wl,normal=base.centerline[i].slice(6);
-      const actualOuter=radius[i].inner===side?Math.min(outer,radius[i].value*.8-edge):outer,width=actualOuter-inner;
+      // The recovery band must stay wide through hairpins. Capping it by
+      // curvature leaves a cliff halfway across the promised shoulder.
+      const localShoulder=recoveryWidths[side][i],actualInner=recoveryShoulders&&inner>=0?localShoulder:inner;
+      const targetOuter=recoveryShoulders&&inner>=0?Math.max(outer,localShoulder+64):outer;
+      const actualOuter=recoveryShoulders&&inner<0?localShoulder:radius[i].inner===side?Math.min(targetOuter,radius[i].value*.8-edge):targetOuter,width=actualOuter-actualInner;
       if(width<.75)return null;
       const point=d=>{
-        const offset=side*(edge+d),x=p.pos[0]+r[0]/h*offset,z=p.pos[2]+r[2]/h*offset,roadHeight=p.pos[1]-(normal[0]*(x-p.pos[0])+normal[2]*(z-p.pos[2]))/normal[1]-base.meta.settings.roadThickness/normal[1]-.07;
+        const offset=side*(edge+d),x=p.pos[0]+r[0]/h*offset,z=p.pos[2]+r[2]/h*offset,roadHeight=p.pos[1]-(normal[0]*(x-p.pos[0])+normal[2]*(z-p.pos[2]))/normal[1]-(recoveryShoulders?.025:base.meta.settings.roadThickness/normal[1]+.07);
+        if(recoveryShoulders){const distance=Math.max(0,d-localShoulder),height=sample(x,z,roadHeight),limit=distance*.12;return {x,z,y:roadHeight+Math.max(-limit,Math.min(limit,height-roadHeight))};}
         const actual=sample(x,z,roadHeight),t=Math.max(0,Math.min(1,d/250)),weight=1-t*t*(3-2*t);
         if(d>250){const edgeOffset=side*(edge+250),bx=p.pos[0]+r[0]/h*edgeOffset,bz=p.pos[2]+r[2]/h*edgeOffset,baseHeight=sample(bx,bz,roadHeight),u=Math.min(1,(d-250)/250);return {x,z,y:baseHeight*(1-u)+.2*u};}
         return {x,z,y:actual*(1-weight)+roadHeight*weight};
       };
-      const a=point(inner),b=point(actualOuter),bank=side*(b.y-a.y)/width;
+      const a=point(actualInner),b=point(actualOuter),bank=side*(b.y-a.y)/width;
       return {pos:[(a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2],wr:width/2,wl:width/2,bank,sourceIndex:i,surfaceRight:[r[0]/h,0,r[2]/h]};
     });
     const narrow=inner<0;
@@ -52,16 +76,29 @@ export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLeng
     for(let run of runs){
       finishPoints(run,closed);
       if(!narrow)run=smoothDrivingPoints(run,{heightSigma:120,bankSigma:120,closed});
-      for(const [a,b] of adaptiveSegments(run,narrow?edgeMaxLength:outerMaxLength,narrow?.8:outerTolerance,(narrow?12:outerMaxTurn)*Math.PI/180,narrow?.65:outerTolerance,Infinity,narrow?4:outerWidthVariation)){
-        spans.push({index:skirts.length,side,inner,outer,start:run[a].sourceIndex,end:run[b].sourceIndex});skirts.push(terrainSlab(run,a,b,{minimumHeight:narrow?-Infinity:.15}));
+      for(const [a,b] of adaptiveSegments(run,narrow?edgeMaxLength:outerMaxLength,narrow?(recoveryShoulders?1:.8):outerTolerance,(narrow?12:outerMaxTurn)*Math.PI/180,narrow?(recoveryShoulders?.25:.65):outerTolerance,Infinity,narrow?(recoveryShoulders?32:4):outerWidthVariation)){
+        const emit=(first,last)=>{
+          const part=terrainSlab(run,first,last,{minimumHeight:narrow?-Infinity:.15});
+          if(recoveryShoulders&&narrow&&last-first>1){
+            let error=0;
+            for(let i=first;i<=last;i++){const q=run[i];for(const d of [-q.wl,q.wr])error=Math.max(error,Math.abs(topHeight(part,q.pos[0]+q.surfaceRight[0]*d,q.pos[2]+q.surfaceRight[2]*d)-q.pos[1]-q.bank*d));}
+            if(error>.06){const mid=(first+last)>>1;emit(first,mid);emit(mid,last);return;}
+          }
+          spans.push({index:skirts.length,side,inner,outer,start:run[first].sourceIndex,end:run[last].sourceIndex});skirts.push(part);
+        };
+        emit(a,b);
       }
     }
   }
-  const constrained=constrainSurfaces(base,skirts,.04),foundationSet=new Set(bulk.meta.terrain.foundationIndices);
+  const constrained=constrainSurfaces(base,skirts,recoveryShoulders?.01:.04,!recoveryShoulders,recoveryShoulders),foundationSet=new Set(bulk.meta.terrain.foundationIndices);
+  if(recoveryShoulders){
+    const near=constrained.parts.filter((_,i)=>spans[i].inner<0),indices=spans.flatMap((s,i)=>s.inner>=0?[i]:[]),fit=constrainSurfaces({parts:near},indices.map(i=>constrained.parts[i]),.01,false,true);
+    indices.forEach((id,i)=>constrained.parts[id]=fit.parts[i]);
+  }
   const foundationTop=Math.min(...bulk.meta.terrain.foundationIndices.map(i=>topHeight(bulk.parts[i],bulk.parts[i][0],bulk.parts[i][2])));
   const patches=bulk.parts.slice(start).filter((_,i)=>!foundationSet.has(start+i));
   const dressed=constrainSurfaces({parts:constrained.parts.filter((_,i)=>spans[i].outer<=250)},patches,.01,false);
-  const filled=constrainSurfaces(base,[...dressed.parts,...constrained.parts].map(p=>solidToDatum(p,foundationTop)),.04);
+  const filled=constrainSurfaces(base,[...dressed.parts,...constrained.parts].map(p=>solidToDatum(p,foundationTop)),recoveryShoulders?.01:.04,!recoveryShoulders,recoveryShoulders);
   // All foundation tiles share one datum. Expand them to cover the complete
   // solid footprint so the roadside slopes always land on continuous grass.
   const footprint=filled.parts.flatMap(boxCorners),xs=footprint.map(p=>p[0]),zs=footprint.map(p=>p[2]),minX=Math.min(...xs),minZ=Math.min(...zs),maxX=Math.max(...xs),maxZ=Math.max(...zs);
@@ -84,11 +121,11 @@ export function addTerrain(base,rawGround,{rootCell=1024,minCell=256,edgeMaxLeng
   }
   const bounds=bulk.parts.flatMap(boxCorners);bulk.meta.planBounds={min:[0,1,2].map(k=>Math.min(...bounds.map(p=>p[k]))),max:[0,1,2].map(k=>Math.max(...bounds.map(p=>p[k])))};
   bulk.meta.width=round(bulk.meta.planBounds.max[0]-bulk.meta.planBounds.min[0]);bulk.meta.depth=round(bulk.meta.planBounds.max[2]-bulk.meta.planBounds.min[2]);
-  const track={...base,parts:bulk.parts.slice(0,start)},grass=bulk.parts.slice(start),audit=volumeAudit(track,grass),clearance=clearanceAudit(track,grass,.035);
-  if(audit.intersections.length)throw Error('Terrain enters the driving geometry: '+JSON.stringify(audit.intersections.slice(0,5)));
+  const track={...base,parts:bulk.parts.slice(0,start)},grass=bulk.parts.slice(start),audit=volumeAudit(track,grass),clearance=clearanceAudit(track,grass,recoveryShoulders?.005:.035,!recoveryShoulders,recoveryShoulders);
+  if(!recoveryShoulders&&audit.intersections.length)throw Error('Terrain enters the driving geometry: '+JSON.stringify(audit.intersections.slice(0,5)));
   if(clearance.maxProtrusionStuds>.0002)throw Error('Terrain rises through a track surface');
   if(bulk.parts.length+1>=10000)throw Error('Full terrain build exceeds the under-10000 budget: '+JSON.stringify({total:bulk.parts.length+1,bulk:dressed.parts.length,edges:constrained.parts.length,bands:spans.reduce((r,s)=>(r[`${s.side}:${s.inner}`]=(r[`${s.side}:${s.inner}`]??0)+1,r),{})}));
-  bulk.meta.terrain={...bulk.meta.terrain,solidToFoundation:true,foundationTop:foundationTop+lift,solidFitting:{modified:filled.modified,maximumLoweringStuds:filled.maximumLowering},basePartCount:start,addedParts:grass.length,bulkParts:dressed.parts.length+foundations.length,edgeParts:constrained.parts.length,edgeSpans:spans.map(s=>({...s,index:start+dressed.parts.length+foundations.length+s.index})),totalWithExistingGrass:bulk.parts.length+1,foundationLift:lift,clearanceAudit:clearance,volumeAudit:audit,edgeLowering:{modified:constrained.modified,maximumStuds:constrained.maximumLowering},bulkDressing:{modified:dressed.modified,maximumStuds:dressed.maximumLowering}};
+  bulk.meta.terrain={...bulk.meta.terrain,recoveryShoulders,shoulderWidthStuds:shoulderWidth,solidToFoundation:true,foundationTop:foundationTop+lift,solidFitting:{modified:filled.modified,maximumLoweringStuds:filled.maximumLowering},basePartCount:start,addedParts:grass.length,bulkParts:dressed.parts.length+foundations.length,edgeParts:constrained.parts.length,edgeSpans:spans.map(s=>({...s,index:start+dressed.parts.length+foundations.length+s.index})),totalWithExistingGrass:bulk.parts.length+1,foundationLift:lift,clearanceAudit:clearance,volumeAudit:audit,edgeLowering:{modified:constrained.modified,maximumStuds:constrained.maximumLowering},bulkDressing:{modified:dressed.modified,maximumStuds:dressed.maximumLowering}};
   bulk.meta.limitations=bulk.meta.limitations.filter(s=>!s.startsWith('Terrain uses broad'));
   bulk.meta.limitations.push('Roadside grass uses narrow fitted slope strips; open areas use broad planar patches and foundation tiles. Outer terraces and rectangular borders remain.');
   return bulk;
