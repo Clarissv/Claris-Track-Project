@@ -1,5 +1,5 @@
 -- The launcher passes a workspace-relative path; paste mode passes JSON directly.
-local dataPath, inlineJson, launchMode, checkpointPath = ...
+local dataPath, inlineJson, launchMode, checkpointPath, liveCheckpoint = ...
 local raw = inlineJson
 if raw == nil then
     dataPath = dataPath or "RedBullRingBarriers/red-bull-ring-plan.json"
@@ -74,12 +74,21 @@ assert(type(REQUIRED_BASE) == "table" and finite(REQUIRED_BASE.count) and REQUIR
 assert(meta.variant == "clear-start-compact-barriers", "Use the matching barrier plan")
 local INITIAL_SERVER_COUNT
 local restoredCheckpoint
-if launchMode == "resume" then
+if launchMode == "resume" or launchMode == "handoff" then
+    local saved
+    if launchMode=="handoff" then
+        assert(type(liveCheckpoint)=="table" and liveCheckpoint.previous==_G.RedBullRingBarriersBuilder and liveCheckpoint.previous.State~="building", "Keep the stopped road session loaded for handoff")
+        saved=liveCheckpoint
+        assert(type(saved.placed)=="table" and finite(saved.sentCount) and saved.sentCount>=0 and saved.sentCount%1==0 and finite(saved.reusedCount) and saved.reusedCount>=0 and saved.reusedCount%1==0,"Invalid live road ownership/counts")
+        for index,object in pairs(saved.placed) do assert(finite(index) and index%1==0 and index>=1 and index<saved.nextIndex and object:IsA("BasePart"),"Invalid live road ownership") end
+    else
     local ok, contents = pcall(readfile, checkpointPath or "RedBullRingBarriers/red-bull-ring-barriers-jakarta-checkpoint.json")
     if not ok and checkpointPath then ok, contents = pcall(readfile, "RedBullRingBarriers/red-bull-ring-barriers-jakarta-checkpoint.json") end
     assert(ok, "Red Bull Ring: checkpoint is missing. Export it from the previous session first.")
-    local decoded, saved = pcall(function() return game:GetService("HttpService"):JSONDecode(contents) end)
+    local decoded;decoded,saved = pcall(function() return game:GetService("HttpService"):JSONDecode(contents) end)
     assert(decoded and type(saved) == "table" and saved.format == "red-bull-ring-checkpoint-v2", "Red Bull Ring: use a Jakarta checkpoint; Jawa Timur checkpoints require their original loader")
+    end
+    assert(type(saved)=="table" and saved.format=="red-bull-ring-checkpoint-v2","Invalid road handoff/checkpoint")
     assert(saved.placeId == TARGET_PLACE_ID, "Red Bull Ring: checkpoint belongs to a different map; start a fresh Jakarta build")
     if saved.saveObjectLimit ~= nil then assert(finite(saved.saveObjectLimit) and saved.saveObjectLimit >= 1 and saved.saveObjectLimit % 1 == 0, "Red Bull Ring: invalid checkpoint save limit") end
     local checksum = 0
@@ -103,7 +112,7 @@ if launchMode == "resume" then
     CONFIG.Origin, CONFIG.Scale = CFrame.new(table.unpack(saved.origin)), saved.scale
     CONFIG.CatalogName, CONFIG.ApplyAppearance = saved.catalogName, saved.applyAppearance
     if saved.saveObjectLimit ~= nil then CONFIG.SaveObjectLimit = saved.saveObjectLimit end
-    if saved.expectedServerCount ~= nil then assert(finite(saved.expectedServerCount) and saved.expectedServerCount % 1 == 0 and saved.expectedServerCount >= REQUIRED_BASE.count + saved.nextIndex, "Red Bull Ring: invalid recovery prefix count") end
+    if saved.expectedServerCount ~= nil then assert(finite(saved.expectedServerCount) and saved.expectedServerCount % 1 == 0 and (launchMode=="handoff" and saved.expectedServerCount>=saved.nextIndex-1 or launchMode~="handoff" and saved.expectedServerCount >= REQUIRED_BASE.count + saved.nextIndex), "Red Bull Ring: invalid recovery prefix count") end
     assert(saved.expectedServerCount ~= nil, "Barrier checkpoint needs the combined server count")
     assert(saved.requiredBase and saved.requiredBase.version == REQUIRED_BASE.version and saved.requiredBase.checksum == REQUIRED_BASE.checksum and saved.requiredBase.count == REQUIRED_BASE.count, "Checkpoint belongs to a different base road")
     restoredCheckpoint = saved

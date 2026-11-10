@@ -21,7 +21,7 @@ square. Barriers intersect no driving solids, have buried bottoms, and expose
 at least 3.18 studs above the ground. Outer-terrain gaps remain where continuous
 fencing would require unsafe detours.
 
-The matching connected-ramp base is release `c8e791ad3efdfa73e337`: **5,138 placed Parts**,
+The matching connected-ramp base is release `3be155ccef8115f0fc4c`: **5,138 placed Parts**,
 18-stud pit width, at least 25 studs of building space, one entry curve and one
 rounded exit. The 400 x 400 starting square keeps its centre and pit alignment.
 

@@ -43,9 +43,11 @@ kerbs. Maximum drops below the road plane are 0.084 studs beside the main road,
 solids while its top remains beneath the driving surface.
 
 The builder also checks actual replicated road Parts more closely: position
-and size errors must stay within 0.005 studs at default scale, axis-vector
-errors within 0.00005, and the road top within 0.008 studs at all four requested
-corners. Larger errors stop confirmation without resending an uncertain
+and size errors must stay within 0.01 studs at default scale, the road top
+within 0.008 studs at all four requested corners, and complete corner positions
+within 0.03 studs. The previous 0.00005 axis-vector gate could reject small
+replicated rotations even when the road surface stayed close; it is removed.
+Larger surface/footprint errors stop confirmation without resending an uncertain
 placement. `_G.RedBullRingClearStartCompactBuilder.SurfaceReport()` returns
 measurement maxima for road confirmations in the current session.
 
@@ -80,8 +82,17 @@ succeeds. Both stages use immutable pinned releases.
 
 ## Existing builds
 
-This changes geometry and requires a fresh build. Loading the panel does not
-delete an old build. Existing checkpoints must use their matching releases:
+This placement-check correction leaves the 5,139-object road geometry unchanged.
+For a stopped connected-ramp session that is still open, the separate compact
+loader accepts `"continue"`. It verifies the complete matching plan and server
+count, checks the accepted pending Part's surface, then transfers the confirmed
+prefix to the corrected builder. It retains placement ownership, transform,
+autosave history and the original full-build coordinator. The pending placement
+is not sent again. Genuine surface errors or ambiguous counts remain stopped.
+
+The ramps differ from the older compact geometry and require a fresh build
+when upgrading those versions. Loading the panel does not delete an old build.
+Existing checkpoints must use their matching releases:
 the preceding [8,174-object base](releases/f78205c653c1bc354f82/loader.lua),
 [8,618-object smooth-shoulder base](releases/f275f4b14568e3c8fa70/loader.lua),
 and [8,937-object original compact base](releases/d2840d8a3fc35727fc0c/loader.lua)

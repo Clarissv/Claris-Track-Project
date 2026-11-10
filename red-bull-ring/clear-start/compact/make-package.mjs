@@ -18,6 +18,7 @@ const assets={
   'red-bull-ring-recovery.lua':Buffer.from(read('red-bull-ring-recovery.lua')),
   'red-bull-ring-checkpoint.lua':Buffer.from(read('red-bull-ring-checkpoint.lua')),
   'red-bull-ring-diagnose.lua':Buffer.from(read('red-bull-ring-diagnose.lua')),
+  'red-bull-ring-continue.lua':Buffer.from(read('red-bull-ring-continue.lua')),
 };
 const digest=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const hash=crypto.createHash('sha256');for(const [name,body] of Object.entries(assets))hash.update(name).update('\0').update(body);

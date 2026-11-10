@@ -120,8 +120,9 @@ for(const name of ['red-bull-ring-save.lua','red-bull-ring-diagnose.lua']){
   write(name,s);
 }
 let github=adapt(read('github-loader-template.luau'));
-github=github.replace(' or mode == "recovery"',' or mode == "continue"').replace('checkpoint, recovery, diagnose','checkpoint, continue, diagnose');
+github=github.replace(' or mode == "recovery"','').replace('checkpoint, recovery, continue, diagnose','checkpoint, continue, diagnose');
 github=github.replace(/^if mode == "recovery"[^\n]*\n/gm,'');
+github=github.replace(/^if mode == "continue"[^\n]*\n/gm,'');
 github=replace(github,'if mode == "diagnose" then','if mode == "continue" then return compile("red-bull-ring-continue.lua")() end\nif mode == "diagnose" then');
 github=replace(github,'print("[Red Bull Ring] Loading the Jakarta circuit builder and track data from GitHub...")',`if _G.RedBullRingBarriersBuilder and mode ~= "resume" then
     local api = _G.RedBullRingBarriersBuilder

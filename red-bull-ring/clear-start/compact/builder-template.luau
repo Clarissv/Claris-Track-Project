@@ -335,7 +335,7 @@ local function objectUuid(object)
     local id = object.Name:match("^%{(.-)%}$") or object.Name
     if #id == 36 and id:match(UUID_PATTERN) then return string.lower(id) end
 end
-local roadMeasurements = {confirmed=0,maxPositionErrorStuds=0,maxTopErrorStuds=0}
+local roadMeasurements = {confirmed=0,maxPositionErrorStuds=0,maxTopErrorStuds=0,maxCornerErrorStuds=0}
 local function roadSurfaceError(object, request)
     local role = PART_ROLE[request.index]
     if not role or CATALOG_ROLES[role].name ~= "Others75" then return nil end
@@ -343,18 +343,31 @@ local function roadSurfaceError(object, request)
     local back = Vector3.new(right.Y*up.Z-right.Z*up.Y, right.Z*up.X-right.X*up.Z, right.X*up.Y-right.Y*up.X)
     local actualUp = object.CFrame.UpVector
     local actualTop = object.Position + actualUp * (object.Size.Y / 2)
-    local maximum = 0
+    local maximum, cornerMaximum = 0, 0
+    local actualRight = object.CFrame.RightVector
+    local actualBack = Vector3.new(actualRight.Y*actualUp.Z-actualRight.Z*actualUp.Y, actualRight.Z*actualUp.X-actualRight.X*actualUp.Z, actualRight.X*actualUp.Y-actualRight.Y*actualUp.X)
     -- Compare the two top planes at all four requested corners. This catches
     -- pitch and banking errors that a position-only replication check misses.
     for _, side in ipairs({-1,1}) do for _, along in ipairs({-1,1}) do
         local corner = request.cf.Position + up * (request.size.Y/2) + right * (side*request.size.X/2) + back * (along*request.size.Z/2)
         maximum = math.max(maximum, math.abs((corner-actualTop):Dot(actualUp)/actualUp.Y))
+        local actualCorner = actualTop + actualRight * (side*object.Size.X/2) + actualBack * (along*object.Size.Z/2)
+        cornerMaximum = math.max(cornerMaximum, (actualCorner-corner).Magnitude)
     end end
-    return maximum
+    return maximum, cornerMaximum
+end
+local function roadSurfaceMatches(object,request,positionError,sizeError)
+    local topError,cornerError=roadSurfaceError(object,request)
+    if not topError then return true end
+    local scale=math.max(1,request.scale)
+    if positionError>.01*scale or sizeError>.01*scale then return false,"road position/size exceeds the surface tolerance" end
+    if topError>.008*scale then return false,string.format("road top differs by %.5f studs",topError) end
+    if cornerError>.03*scale then return false,string.format("road corners differ by %.5f studs",cornerError) end
+    return true
 end
 function api.SurfaceReport()
     return {confirmed=roadMeasurements.confirmed,maxPositionErrorStuds=roadMeasurements.maxPositionErrorStuds,
-        maxTopErrorStuds=roadMeasurements.maxTopErrorStuds,worstIndex=roadMeasurements.worstIndex}
+        maxTopErrorStuds=roadMeasurements.maxTopErrorStuds,maxCornerErrorStuds=roadMeasurements.maxCornerErrorStuds,worstIndex=roadMeasurements.worstIndex}
 end
 
 local function matches(object, request, reuse)
@@ -370,13 +383,8 @@ local function matches(object, request, reuse)
     local sizeError = (object.Size - request.size).Magnitude
     if sizeError > (reuse and 0.01 or 0.05) then return false, string.format("size differs by %.3f studs", sizeError) end
     if object.CFrame.RightVector:Dot(request.cf.RightVector) < 0.999 or object.CFrame.UpVector:Dot(request.cf.UpVector) < 0.999 then return false, "rotation/slope differs" end
-    local topError = roadSurfaceError(object, request)
-    if topError then
-        local scale = math.max(1, request.scale)
-        if positionError > .005 * scale or sizeError > .005 * scale then return false, "road position/size exceeds the smooth-surface tolerance" end
-        if (object.CFrame.RightVector-request.cf.RightVector).Magnitude > .00005 or (object.CFrame.UpVector-request.cf.UpVector).Magnitude > .00005 then return false, "road rotation exceeds the smooth-surface tolerance" end
-        if topError > .008 * scale then return false, string.format("road top differs by %.5f studs", topError) end
-    end
+    local surfaceOk,surfaceReason=roadSurfaceMatches(object,request,positionError,sizeError)
+    if not surfaceOk then return false,surfaceReason end
     if request.verifyAppearance then
         local actual, expected = object.Color, request.color
         local difference = Vector3.new(actual.R - expected.R, actual.G - expected.G, actual.B - expected.B).Magnitude
@@ -452,10 +460,11 @@ local function record(object, index, sent)
     local uuid = objectUuid(object)
     if uuid then uuidOwners[uuid] = index end
     local measurementRequest = makeRequest(index, origin, buildScale, appearance)
-    local topError = roadSurfaceError(object, measurementRequest)
+    local topError,cornerError = roadSurfaceError(object, measurementRequest)
     if topError then
         roadMeasurements.confirmed = roadMeasurements.confirmed + 1
         roadMeasurements.maxPositionErrorStuds = math.max(roadMeasurements.maxPositionErrorStuds, (object.Position-measurementRequest.cf.Position).Magnitude)
+        roadMeasurements.maxCornerErrorStuds = math.max(roadMeasurements.maxCornerErrorStuds,cornerError)
         if topError >= roadMeasurements.maxTopErrorStuds then roadMeasurements.maxTopErrorStuds, roadMeasurements.worstIndex = topError, index end
     end
     api.Placed[index] = object
@@ -465,6 +474,13 @@ local function record(object, index, sent)
     else api.ReusedCount = api.ReusedCount + 1 end
     api.NextIndex = index + 1
     pending = nil
+end
+if launchMode=="handoff" then
+    api.SentCount,api.ReusedCount=liveCheckpoint.sentCount,liveCheckpoint.reusedCount
+    for index,object in pairs(liveCheckpoint.placed) do
+        api.Placed[index],owners[object]=object,index
+        local uuid=objectUuid(object);if uuid then uuidOwners[uuid]=index end
+    end
 end
 local function queryServerCount()
     local saver = remote("RemoteFunctions", "BuildSaver", "RemoteFunction")

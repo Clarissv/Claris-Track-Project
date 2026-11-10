@@ -37,8 +37,12 @@ try {
     $saveTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-save.lua')).Replace('-- SAVE_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-save.lua')))
     $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $saveTests + "
 -- HTTP_LOADER_TESTS")
+    $continueTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-road-continue.lua'))
+    $continueTests = $continueTests.Replace('-- LEGACY_ROAD_SCRIPT', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'releases\c8e791ad3efdfa73e337\red-bull-ring-builder.lua')))
+    $continueTests = $continueTests.Replace('-- ROAD_CONTINUE_SCRIPT', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-continue.lua')))
     $autoTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-autosave.lua'))
     $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $autoTests + "
+" + $continueTests + "
 -- HTTP_LOADER_TESTS")
     $recoveryTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-recovery.lua')).Replace('-- RECOVERY_HELPER_SOURCE', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'red-bull-ring-recovery.lua')))
     $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $recoveryTests + "
