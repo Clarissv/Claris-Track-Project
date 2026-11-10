@@ -1,4 +1,4 @@
--- Read-only Jakarta barrier inspector. Open Build Tools, aim at a sample and press I.
+-- Read-only Jakarta barrier inspector. Hold a catalog item without placing it; press I.
 -- Reports catalog/template/material assets; never places, edits or saves game objects.
 local Players=game:GetService("Players")
 local Storage=game:GetService("ReplicatedStorage")
@@ -68,31 +68,41 @@ function api.Scan()
     api.Catalog=out
     return out
 end
-function api.Inspect(target)
-    assert(typeof(target)=="Instance" and target:IsA("BasePart"),"Aim at the steel or striped-concrete sample and press I")
+function api.Inspect(target,source)
+    assert(typeof(target)=="Instance" and target:IsA("BasePart"),"Hold a barrier preview or aim at a sample and press I")
     local catalog,targetRecord=api.Scan(),record(target)
     local buildRoot=target
     local folder=workspace:FindFirstChild("EditableBuilds")
     if folder and target:IsDescendantOf(folder) then while buildRoot.Parent~=folder do buildRoot=buildRoot.Parent end end
     local named={}
-    for _,object in ipairs({target,buildRoot}) do
-        named[object.Name]=true
-        for _,value in pairs(object:GetAttributes()) do if type(value)=="string" then named[value]=true end end
+    local identityObjects={buildRoot}
+    local ancestor=target
+    for _=1,8 do
+        if not ancestor or ancestor==workspace or ancestor==player then break end
+        identityObjects[#identityObjects+1]=ancestor
+        ancestor=ancestor.Parent
     end
-    local candidates={}
+    for _,object in ipairs(identityObjects) do
+        named[object.Name]=true
+        for _,value in pairs(object:GetAttributes()) do if type(value)=="string" then named[value]=true;named[value:gsub("^%{",""):gsub("%}$","")]=true end end
+    end
+    local candidates,bestEvidence={},0
     for _,entry in ipairs(catalog) do
-        local reason
-        if named[entry.name] or named[entry.guid] then reason="catalog name/GUID on sample"
+        local reason,evidence=nil,0
+        if named[entry.name] or named[entry.guid] then reason,evidence="catalog name/GUID on sample",3
         else for _,p in ipairs(entry.parts) do
             if p.class==targetRecord.class and p.shape==targetRecord.shape then
-                if #targetRecord.assets>0 and assetKey(p)==assetKey(targetRecord) then reason="matching mesh/texture assets"
-                elseif targetRecord.materialVariant~="" and p.material==targetRecord.material and p.materialVariant==targetRecord.materialVariant then reason="matching material variant"
+                if #targetRecord.assets>0 and assetKey(p)==assetKey(targetRecord) then reason,evidence="matching mesh/texture assets",2
+                elseif evidence<2 and targetRecord.materialVariant~="" and p.material==targetRecord.material and p.materialVariant==targetRecord.materialVariant then reason,evidence="matching material variant",1
                 end
             end
         end end
-        if reason then candidates[#candidates+1]={name=entry.name,guid=entry.guid,category=entry.category,plus=entry.plus,reason=reason,templateClass=entry.templateClass,parts=entry.parts} end
+        if reason and evidence>=bestEvidence then
+            if evidence>bestEvidence then candidates,bestEvidence={},evidence end
+            candidates[#candidates+1]={name=entry.name,guid=entry.guid,category=entry.category,plus=entry.plus,reason=reason,templateClass=entry.templateClass,parts=entry.parts}
+        end
     end
-    local report={format="red-bull-ring-barrier-inspection-v1",placeId=game.PlaceId,targetPath=target:GetFullName(),target=targetRecord,candidates=candidates}
+    local report={format="red-bull-ring-barrier-inspection-v1",placeId=game.PlaceId,source=source or "sample",targetPath=target:GetFullName(),target=targetRecord,candidates=candidates}
     api.LastReport=report
     line("SAMPLE: "..report.targetPath)
     line("Material="..targetRecord.material.." | MaterialVariant="..(targetRecord.materialVariant~="" and targetRecord.materialVariant or "(empty)").." | Class="..targetRecord.class)
@@ -101,6 +111,72 @@ function api.Inspect(target)
     local json=Http:JSONEncode(report)
     line("REPORT JSON: "..json)
     if type(writefile)=="function" then local ok,err=pcall(writefile,"red-bull-ring-barrier-inspection.json",json);line(ok and "Exported red-bull-ring-barrier-inspection.json" or "Export unavailable: "..tostring(err)) end
+    return report
+end
+local function previewRoot(part,root)
+    local found,object=nil,part
+    while object and object~=root do
+        local name=string.lower(object.Name)
+        -- Exclude our complete local circuit previews from held-item capture.
+        if name:find("redbullring",1,true) and name:find("preview",1,true) then return nil,true end
+        if name:find("preview",1,true) or name:find("ghost",1,true) or name:find("holding",1,true) then found=object end
+        object=object.Parent
+    end
+    return found,false
+end
+function api.Preview(index)
+    local catalog=api.Scan()
+    local folder=workspace:FindFirstChild("EditableBuilds")
+    local roots={workspace}
+    local gui=player:FindFirstChild("PlayerGui")
+    if gui then roots[#roots+1]=gui end
+    local candidates,byRoot={},{}
+    for _,root in ipairs(roots) do for _,part in ipairs(root:GetDescendants()) do
+        if part:IsA("BasePart") and not (folder and part:IsDescendantOf(folder)) and not (player.Character and part:IsDescendantOf(player.Character)) then
+            local holder,excluded=previewRoot(part,root)
+            if not excluded and property(part,"Transparency")~=1 and (holder or (root==workspace and part.CanCollide==false and part.Anchored==true)) then
+                local p,matchesCatalog=record(part),false
+                for _,entry in ipairs(catalog) do for _,template in ipairs(entry.parts) do
+                    if p.class==template.class and p.shape==template.shape and
+                        ((p.materialVariant~="" and p.material==template.material and p.materialVariant==template.materialVariant) or
+                        (#p.assets>0 and assetKey(p)==assetKey(template))) then matchesCatalog=true end
+                end end
+                -- Named preview roots are explicit evidence. Unnamed workspace
+                -- ghosts need a catalog appearance match and non-colliding,
+                -- anchored geometry. GUI catalog icons are never a fallback.
+                if holder or (root==workspace and matchesCatalog and part.CanCollide==false and part.Anchored==true) then
+                    local score=(holder and 4 or 0)+(matchesCatalog and 4 or 0)
+                    local group=holder or part
+                    local existing=byRoot[group]
+                    if not existing then existing={part=part,root=group,score=score};byRoot[group]=existing;candidates[#candidates+1]=existing
+                    elseif score>existing.score then existing.part,existing.score,existing.ambiguous=part,score,nil
+                    elseif score==existing.score then
+                        local a,b=record(existing.part),p
+                        if a.material~=b.material or a.materialVariant~=b.materialVariant or assetKey(a)~=assetKey(b) then existing.ambiguous=true end
+                    end
+                end
+            end
+        end
+    end end
+    table.sort(candidates,function(a,b) if a.score~=b.score then return a.score>b.score end;return a.part:GetFullName()<b.part:GetFullName() end)
+    api.PreviewCandidates=candidates
+    if index~=nil then
+        assert(type(index)=="number" and index%1==0 and candidates[index],"Choose a listed preview number")
+        assert(not candidates[index].ambiguous,"Preview contains different part appearances; use Inspect with the exact part")
+        return api.Inspect(candidates[index].part,"held preview")
+    end
+    if #candidates==1 and not candidates[1].ambiguous then return api.Inspect(candidates[1].part,"held preview") end
+    for i,candidate in ipairs(candidates) do
+        local p=record(candidate.part)
+        line("PREVIEW "..i..": "..candidate.part:GetFullName().." | Material="..p.material.." | MaterialVariant="..p.materialVariant..(candidate.ambiguous and " | multiple appearances in this preview" or ""))
+    end
+    if #candidates==0 then line("No held preview found. Select the barrier and move its preview into the world, then try again.");return nil,"none" end
+    line("Several possible previews found. Run _G.RedBullRingBarrierInspector.Preview(number) for the intended one.")
+    return nil,"ambiguous"
+end
+function api.Capture()
+    local report,reason=api.Preview()
+    if reason=="none" then return api.Inspect(player:GetMouse().Target) end
     return report
 end
 function api.List(filter)
@@ -112,9 +188,9 @@ end
 function api.Unload() if connection then connection:Disconnect() end;_G.RedBullRingBarrierInspector=nil end
 connection=Input.InputBegan:Connect(function(input,processed)
     if processed or Input:GetFocusedTextBox() or input.KeyCode~=Enum.KeyCode.I then return end
-    local ok,err=pcall(api.Inspect,player:GetMouse().Target)
+    local ok,err=pcall(api.Capture)
     if not ok then line(tostring(err)) end
 end)
-line("Ready. Aim at the steel sample and press I, then repeat for striped concrete. Paste the SAMPLE / Material / Catalog lines back into the chat.")
+line("Ready. Hold the steel barrier in Build Tools without placing it, then press I or run _G.RedBullRingBarrierInspector.Preview(). Repeat for striped concrete; paste the Material / Catalog lines.")
 line("If a sample cannot be identified, run _G.RedBullRingBarrierInspector.List() to list the Others catalog.")
 return api
