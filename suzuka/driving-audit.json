@@ -1,0 +1,193 @@
+{
+  "samples": 27864,
+  "missing": 0,
+  "maxRoadErrorStuds": 0.00006387635615112686,
+  "maxObstacleRiseStuds": 0.005209916082435484,
+  "worst": {
+    "i": 8775,
+    "d": 20,
+    "x": 980.774041847211,
+    "z": -50.87019361884248,
+    "y": 156.6035331848759,
+    "near": {
+      "index": 1243,
+      "height": 156.60351399508423
+    },
+    "rise": 0.005209916082435484
+  },
+  "bridgeClearanceStuds": 14.43208875894987,
+  "roadJoins": {
+    "maxOverlapStep": 0.007869058407379725,
+    "maxPitchChangeDegrees": 0.572952648447143,
+    "worst": [
+      264,
+      265
+    ]
+  },
+  "pitJoins": {
+    "maxOverlapStep": 0.005871627240452426,
+    "maxPitchChangeDegrees": 0.08656585795437977,
+    "worst": [
+      1436,
+      1437
+    ]
+  },
+  "elevation": {
+    "source": "GLB road triangle heights sampled on the cleaned horizontal route; height resolves the crossover",
+    "samples": 9288,
+    "maxAbsoluteErrorStuds": 6.16184531149327,
+    "rmsErrorStuds": 1.1311431042713977,
+    "landmarks": [
+      {
+        "name": "afterSnake",
+        "row": 400,
+        "sourceHeightStuds": 49.94179294323682,
+        "builtHeightStuds": 49.85065282680317,
+        "errorStuds": -0.09114011643364961
+      },
+      {
+        "name": "degnerApproach",
+        "row": 440,
+        "sourceHeightStuds": 41.744006694023014,
+        "builtHeightStuds": 41.79012416712767,
+        "errorStuds": 0.0461174731046583
+      },
+      {
+        "name": "degner",
+        "row": 490,
+        "sourceHeightStuds": 25.526681653951304,
+        "builtHeightStuds": 23.529299172477067,
+        "errorStuds": -1.9973824814742365
+      },
+      {
+        "name": "hairpin",
+        "row": 579,
+        "sourceHeightStuds": 60.827210481171456,
+        "builtHeightStuds": 61.533197375746184,
+        "errorStuds": 0.7059868945747283
+      },
+      {
+        "name": "200R",
+        "row": 712,
+        "sourceHeightStuds": 59.42894474320757,
+        "builtHeightStuds": 59.43788987519402,
+        "errorStuds": 0.008945131986443755
+      },
+      {
+        "name": "spoon",
+        "row": 790,
+        "sourceHeightStuds": 68.64667190343285,
+        "builtHeightStuds": 68.88869904629605,
+        "errorStuds": 0.2420271428632077
+      },
+      {
+        "name": "130R",
+        "row": 1017,
+        "sourceHeightStuds": 46.95594418906625,
+        "builtHeightStuds": 46.9832260206549,
+        "errorStuds": 0.02728183158864539
+      },
+      {
+        "name": "chicane",
+        "row": 1103,
+        "sourceHeightStuds": 52.08479368355601,
+        "builtHeightStuds": 50.96584706050557,
+        "errorStuds": -1.1189466230504408
+      },
+      {
+        "name": "pitEntry",
+        "row": 1117,
+        "sourceHeightStuds": 39.84896760475347,
+        "builtHeightStuds": 40.125934715944155,
+        "errorStuds": 0.27696711119068596
+      }
+    ]
+  },
+  "pit": {
+    "samples": 3459,
+    "missing": 0,
+    "maxSurfaceErrorStuds": 0.006967587444322021,
+    "maxObstacleRiseStuds": 0.006967587444322021,
+    "worst": {
+      "i": 358,
+      "d": 12,
+      "rise": 0.006967587444322021,
+      "all": [
+        {
+          "index": 1418,
+          "height": 109.80544371564932
+        },
+        {
+          "index": 6726,
+          "height": 109.10332336660096
+        },
+        {
+          "index": 7893,
+          "height": 108.85513582599422
+        }
+      ]
+    },
+    "entryTangentErrorDegrees": 0.01698151665680852,
+    "exitTangentErrorDegrees": 0.005734600820192628,
+    "maxHeadingChangeDegrees": 0.8529007860975019,
+    "reverseBends": 0,
+    "approachSweepDegrees": 12.260202980258136
+  },
+  "continuity": {
+    "kerbs": {
+      "checked": 2814,
+      "uncovered": 0,
+      "brokenJoins": 0
+    },
+    "barriers": {
+      "checked": 20918,
+      "uncovered": 0,
+      "brokenJoins": 0
+    }
+  },
+  "kerbPlacement": {
+    "source": "Connected GLB kerb ribbons projected to the main road, with the old pit approach excluded",
+    "checked": 2874,
+    "unsupported": 0,
+    "requiredChecks": 2812,
+    "missing": 0
+  },
+  "gravel": {
+    "snakeFirst": {
+      "runs": 1,
+      "checked": 72,
+      "missing": 0,
+      "hidden": 0
+    },
+    "snakeSecond": {
+      "runs": 1,
+      "checked": 72,
+      "missing": 0,
+      "hidden": 0
+    },
+    "degner": {
+      "runs": 1,
+      "checked": 126,
+      "missing": 0,
+      "hidden": 0
+    },
+    "hairpinOuter": {
+      "runs": 1,
+      "checked": 21,
+      "missing": 0,
+      "hidden": 0
+    },
+    "200R": {
+      "runs": 1,
+      "checked": 306,
+      "missing": 0,
+      "hidden": 0
+    },
+    "130R": {
+      "runs": 1,
+      "checked": 126,
+      "missing": 0,
+      "hidden": 0
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "suzuka-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node compile.mjs && node render.mjs && node make-package.mjs",
+    "test": "node audit.mjs",
+    "test:lua": "powershell -NoProfile -ExecutionPolicy Bypass -File test-builder.ps1 -HttpLoader loader.lua"
+  }
+}

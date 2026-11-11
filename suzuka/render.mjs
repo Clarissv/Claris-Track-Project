@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import {render} from './lib/render.mjs';
+const here=new URL('./',import.meta.url),plan=JSON.parse(fs.readFileSync(new URL('suzuka-plan.json',here)));
+fs.writeFileSync(new URL('build-3d.png',here),render(plan,1500,1100));fs.writeFileSync(new URL('build-topdown.png',here),render(plan,1500,1300,{top:true}));
+const c=plan.meta.bridge.pairs[Math.floor(plan.meta.bridge.pairs.length/2)],lower=plan.parts[c.lower],upper=plan.parts[c.upper],target=lower.slice(0,3);fs.writeFileSync(new URL('build-crossover.png',here),render(plan,1300,900,{target,span:500}));
+fs.writeFileSync(new URL('build-pit.png',here),render(plan,1400,900,{target:plan.meta.pitPoints[Math.floor(plan.meta.pitPoints.length/2)].pos,top:true,span:1500}));
+const p=plan.parts[plan.meta.surfaceSmoothing.roadJoins.worst[0]];fs.writeFileSync(new URL('build-road-joint.png',here),render(plan,1200,800,{target:p.slice(0,3),span:100}));
+const chicane=plan.centerline[1110*8].slice(0,3);fs.writeFileSync(new URL('build-chicane.png',here),render(plan,1300,1000,{target:chicane,top:true,span:700}));
+fs.writeFileSync(new URL('build-pit-entry.png',here),render(plan,1400,1000,{target:plan.meta.pitPoints[0].pos,top:true,span:900}));
+const approachTarget=plan.meta.pitPoints[Math.floor(plan.meta.pitLayout.straightStartIndex*.45)].pos;
+fs.writeFileSync(new URL('build-pit-approach.png',here),render(plan,1500,900,{target:approachTarget,span:800,right:[0,0,1],up:[1,0,0],forward:[0,1,0]}));
+const straight=plan.centerline[60*8].slice(0,3);fs.writeFileSync(new URL('build-main-straight.png',here),render(plan,1300,950,{target:straight,top:true,span:850}));
+const firstKerb=plan.parts[plan.meta.groups.curbs[Math.floor(plan.meta.groups.curbs.length*.7)]];fs.writeFileSync(new URL('build-kerb-detail.png',here),render(plan,1300,900,{target:firstKerb.slice(0,3),top:true,span:160}));
+for(const [name,row,span] of [['first-corner',165,1100],['snake',280,1700],['degner',488,1200],['200r',712,700],['130r',1017,1400],['hairpin',579,1000],['spoon',790,1250]])fs.writeFileSync(new URL(`build-${name}.png`,here),render(plan,1400,1000,{target:plan.centerline[row*8].slice(0,3),top:true,span}));
