@@ -26,6 +26,7 @@ red-bull-ring/
 | Red Bull Ring with terrain (1.5× layout) | 9,629 | [Red Bull Ring](red-bull-ring/README.md) |
 | Red Bull Ring with a clear starting area | 9,623 | [Clear start](red-bull-ring/clear-start/README.md) |
 | Red Bull Ring with connected ramps, an 18-stud pit lane, compact terrain and a clear starting area | 5,138 | [Compact terrain](red-bull-ring/clear-start/compact/README.md) |
+| Suzuka 2001 with GLB height-fitted ramps, smooth grass/sand joins, one pit-entry curve, 21-stud entry/exit, a 16-stud pit lane and connected 80-stud pit building base, model-traced kerbs/gravel, barriers and supported crossover | 8,960 | [Suzuka](suzuka/README.md) |
 
 Counts exclude your existing grass plate and other server objects. The
 directory migration preserves track geometry, runtime globals and checkpoint

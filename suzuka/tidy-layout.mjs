@@ -26,32 +26,29 @@ export function tidyLayout(reference){
   return {points,meta:{method:'Clean CSV route with a straight main straight and a GLB-aligned main chicane',mainStraightRanges:[[0,127*8],[1151*8,points.length-1]],chicaneRange:[1065*8,1113*8],chicaneNativeAnchors:nativeChicane,constantRoadWidthStuds:44}};
 }
 export function pitLayout(main,reference){
-  const entry=1117*8,bend=1126*8,blendEnd=1151*8,exit=100*8,n=main.length-1,entryLength=main[blendEnd].s-main[entry].s,exitStart=main[80*8].s,exitLength=main[exit].s-exitStart,separation=(501.1269-480)*reference.realScale;
+  const entry=1117*8,blendEnd=1151*8,exit=100*8,n=main.length-1,entryLength=main[blendEnd].s-main[entry].s,exitStart=main[80*8].s,exitLength=main[exit].s-exitStart,separation=(501.1269-480)*reference.realScale;
   const ease=t=>{t=Math.max(0,Math.min(1,t));return t*t*t*(10+t*(-15+6*t));};
   const nearest=(x,z)=>{let best=0,d=Infinity;for(let i=0;i<main.length-1;i++){const p=main[i].pos,v=(p[0]-x)**2+(p[2]-z)**2;if(v<d){d=v;best=i;}}return main[best];};
-  // The reference has its own infield approach curve. Leave the final corner,
-  // turn inward, then sweep out to the pit corridor with matching C2 joins.
+  // One sweep follows the yellow line into the pit straight. Its heading
+  // decreases continuously, with no intermediate inward/outward bend.
   const start=main[entry].pos,end=[(480-reference.center[0])*reference.realScale,0,main[blendEnd].pos[2]],r=main[entry].right,h=Math.hypot(r[0],r[2]),t=[-r[2]/h,r[0]/h];
   const left=main[entry-1],right=main[entry+1],distance=Math.hypot(right.pos[0]-left.pos[0],right.pos[2]-left.pos[2]),tangent=p=>{const h=Math.hypot(p.right[0],p.right[2]);return [-p.right[2]/h,p.right[0]/h];},lt=tangent(left),rt=tangent(right),curvature=rt.map((v,i)=>(v-lt[i])/distance),a=[start[0],start[2]],b=[end[0],end[2]];
-  const middle=[(458-reference.center[0])*reference.realScale,(65-reference.center[2])*reference.realScale],middleTangent=[.1,Math.sqrt(.99)],firstTravel=Math.hypot(middle[0]-a[0],middle[1]-a[1])*1.05,secondTravel=Math.hypot(b[0]-middle[0],b[1]-middle[1])*1.05;
-  const firstControls=[a,a.map((v,i)=>v+t[i]*firstTravel/5),a.map((v,i)=>v+2*t[i]*firstTravel/5+curvature[i]*firstTravel*firstTravel/20),middle.map((v,i)=>v-middleTangent[i]*firstTravel*2/5),middle.map((v,i)=>v-middleTangent[i]*firstTravel/5),middle];
-  const secondControls=[middle,middle.map((v,i)=>v+middleTangent[i]*secondTravel/5),middle.map((v,i)=>v+middleTangent[i]*secondTravel*2/5),[b[0],b[1]-secondTravel*2/5],[b[0],b[1]-secondTravel/5],b];
-  const bezier=(controls,t)=>{let q=controls.map(p=>[...p]);for(let j=5;j>0;j--)q=Array.from({length:j},(_,i)=>q[i].map((v,k)=>v*(1-t)+q[i+1][k]*t));return q[0];},bendLength=main[bend].s-main[entry].s;
-  const approach=s=>s<=bendLength?bezier(firstControls,s/bendLength):bezier(secondControls,(s-bendLength)/(entryLength-bendLength));
+  const travel=Math.hypot(b[0]-a[0],b[1]-a[1])*1.04,startTravel=Math.min(travel,(b[0]-a[0])*2/t[0]);
+  const controls=[a,a.map((v,i)=>v+t[i]*startTravel/5),a.map((v,i)=>v+2*t[i]*startTravel/5+curvature[i]*startTravel*startTravel/20),[b[0],b[1]-travel*2/5],[b[0],b[1]-travel/5],b];
+  const approach=s=>{const t=s/entryLength;let q=controls.map(p=>[...p]);for(let j=5;j>0;j--)q=Array.from({length:j},(_,i)=>q[i].map((v,k)=>v*(1-t)+q[i+1][k]*t));return q[0];};
   const points=[];for(let k=entry;k<=n+exit;k++){
     const i=k%n,p=main[i],s=k<n?p.s-main[entry].s:main[n].s-main[entry].s+p.s,merge=k>=n?1-ease((p.s-exitStart)/exitLength):1;
     const q=k<=blendEnd?approach(Math.max(0,Math.min(entryLength,s))):[(480-reference.center[0])*reference.realScale+separation*(1-merge),p.pos[2]],pos=[q[0],p.pos[1],q[1]];
-    height(nearest(pos[0],pos[2]),pos);points.push({pos,wr:13,wl:13,bank:0});
+    height(nearest(pos[0],pos[2]),pos);points.push({pos,wr:10.5,wl:10.5,bank:0});
   }finishPoints(points,false);
-  const horizontal=points.map(p=>[p.pos[0],p.pos[2]]),total=points.at(-1).s;
-  for(let i=1;i<points.length-1;i++){let x=0,z=0,w=0;for(let j=Math.max(0,i-20);j<=Math.min(points.length-1,i+20);j++){const distance=points[j].s-points[i].s,weight=Math.exp(-.5*(distance/10)**2);x+=horizontal[j][0]*weight;z+=horizontal[j][1]*weight;w+=weight;}const blend=ease(Math.min(points[i].s,total-points[i].s)/40);points[i].pos[0]=horizontal[i][0]*(1-blend)+x/w*blend;points[i].pos[2]=horizontal[i][1]*(1-blend)+z/w*blend;height(nearest(points[i].pos[0],points[i].pos[2]),points[i].pos);}
-  finishPoints(points,false);
   for(const p of points){const q=nearest(p.pos[0],p.pos[2]),n=q.normal,r=p.right,h=Math.hypot(r[0],r[2]);p.bank=-(n[0]*r[0]+n[2]*r[2])/(n[1]*h);}
   const filtered=smoothDrivingPoints(points,{heightSigma:100,bankSigma:100,closed:false});
   const blendStart=filtered.find(p=>{const q=nearest(p.pos[0],p.pos[2]);return Math.hypot(q.pos[0]-p.pos[0],q.pos[2]-p.pos[2])>39;}).s,mergeStartIndex=n+80*8-entry;
   for(const [i,p] of filtered.entries()){let q=nearest(p.pos[0],p.pos[2]);const distance=Math.hypot(q.pos[0]-p.pos[0],q.pos[2]-p.pos[2]),t=Math.max(0,Math.min(1,(distance-39)/16));let weight=1-t*t*(3-2*t);if(i<mergeStartIndex){weight=1-ease((p.s-blendStart)/160);q=main[entry];}const n=q.normal,r=p.right,h=Math.hypot(r[0],r[2]),height=q.pos[1]-(n[0]*(p.pos[0]-q.pos[0])+n[2]*(p.pos[2]-q.pos[2]))/n[1],bank=-(n[0]*r[0]+n[2]*r[2])/(n[1]*h);p.pos[1]=p.pos[1]*(1-weight)+height*weight;p.bank=p.bank*(1-weight)+bank*weight;}
   finishPoints(filtered,false);
-  const branchIndex=filtered.findIndex((p,i)=>{const q=main[(entry+i)%n];return Math.hypot(p.pos[0]-q.pos[0],p.pos[2]-q.pos[2])>22-13;});
-  return {points:filtered,meta:{widthStuds:26,entryMainIndex:entry,entryBranchMainIndex:entry+branchIndex,entryBendMainIndex:bend,entryBlendEndMainIndex:blendEnd,exitMainIndex:exit,entryBlendLengthStuds:entryLength,separationStuds:separation,straightStartIndex:blendEnd-entry,exitStartIndex:n+80*8-entry,entryNativeControls:[firstControls,secondControls].map(run=>run.map(p=>[p[0]/reference.realScale+reference.center[0],p[1]/reference.realScale+reference.center[2]])),entryNativeBend:[458,65],method:'Two C2-connected quintic approach curves: inward departure and independent outward sweep into the pit straight, following fix/pitentry.png'}};
+  const straightStartIndex=blendEnd-entry,taperStuds=40,straightS=filtered[straightStartIndex].s,exitS=filtered[mergeStartIndex].s;
+  for(const [i,p] of filtered.entries()){const width=i<=straightStartIndex?16+5*(1-ease((p.s-straightS+taperStuds)/taperStuds)):i>=mergeStartIndex?16+5*ease((p.s-exitS)/taperStuds):16;p.wr=width/2;p.wl=width/2;}
+  const branchIndex=filtered.findIndex((p,i)=>{const q=main[(entry+i)%n];return Math.hypot(p.pos[0]-q.pos[0],p.pos[2]-q.pos[2])>22-p.wr;});
+  return {points:filtered,meta:{widthStuds:16,entryWidthStuds:21,exitWidthStuds:21,widthTaperStuds:taperStuds,entryMainIndex:entry,entryBranchMainIndex:entry+branchIndex,entryBlendEndMainIndex:blendEnd,exitMainIndex:exit,entryBlendLengthStuds:entryLength,separationStuds:separation,straightStartIndex,exitStartIndex:mergeStartIndex,entryNativeControls:[controls.map(p=>[p[0]/reference.realScale+reference.center[0],p[1]/reference.realScale+reference.center[2]])],method:'Single quintic pit-entry curve following fix/pit-entry-single-curve.png; 21-stud entry/exit taper into a 16-stud pit lane'}};
 }
 function height(q,pos){const n=q.normal;pos[1]=q.pos[1]-(n[0]*(pos[0]-q.pos[0])+n[2]*(pos[2]-q.pos[2]))/n[1];}

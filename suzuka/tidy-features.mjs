@@ -48,9 +48,9 @@ function apronProfile(zone,index,points){
   const k=Math.min(zone.profile.length-2,Math.max(0,Math.floor((index-zone.start)/8))),a=zone.profile[k],b=zone.profile[k+1],t=(index-a.index)/(b.index-a.index),inner=a.inner+(b.inner-a.inner)*t,outer=a.outer+(b.outer-a.outer)*t,taper=zone.endTaperStuds??30,fade=Math.min(1,(points[index].s-points[zone.start].s)/taper,(points[zone.end].s-points[index].s)/taper);return {inner,outer:inner+Math.max(2,(outer-inner)*fade)};
 }
 export function createAprons(points,zones,push){const spans=[],runs=[];
-  for(const zone of zones){const {start,end,side}=zone,line=points.slice(start,end+1).map((p,k)=>{const {inner,outer}=apronProfile(zone,start+k,points),width=outer-inner;const q={...p,pos:offset(p,side*(inner+width/2)),wr:width/2,wl:width/2,width};delete q.surfacePlane;return q;}),ids=[];
+  for(const zone of zones){const {start,end,side}=zone,line=points.slice(start,end+1).map((p,k)=>{const {inner,outer}=apronProfile(zone,start+k,points),width=outer-inner;return {...p,pos:offset(p,side*(inner+width/2)),wr:width/2,wl:width/2,width};}),ids=[];
     const segments=adaptiveSegments(line,35,.2,3*Math.PI/180,.06,Infinity,2).flatMap(([a,b])=>{const out=[];let u=a;while(u<b){let v=u+1;while(v<b&&v-u<12&&Math.abs(line[v+1].width-line[u].width)<2)v++;out.push([u,v]);u=v;}return out;});
-    for(const [a,b] of segments){const p=fittedSlab(line,a,b,{thickness:.3,color:zone.color,lift:-.075,guard:.15});p[5]+=.6;const index=push(zone.color===8?'gravel':'runoff',p);ids.push(index);spans.push({index,side,start:start+a,end:start+b});}runs.push({...zone,indices:ids});
+    for(const [a,b] of segments){const p=fittedSlab(line,a,b,{thickness:.3,color:zone.color,lift:-.018,guard:.15});p[5]+=.6;const index=push(zone.color===8?'gravel':'runoff',p);ids.push(index);spans.push({index,side,start:start+a,end:start+b});}runs.push({...zone,indices:ids});
   }return {spans,runs};
 }
 export function barrierOffsets(points,zones){const fields={};
@@ -62,7 +62,7 @@ export function barrierOffsets(points,zones){const fields={};
 export function createBarriers(points,fields,pitMeta,push,pit){const spans=[],runs=[];
   for(const side of [-1,1]){
     const allowed=points.map((p,i)=>!(side===-1&&(i>=pitMeta.entryMainIndex-75&&i<=pitMeta.entryMainIndex+140||i>=pitMeta.exitMainIndex-130&&i<=pitMeta.exitMainIndex+75)));
-    if(pit)for(let i=0;i<points.length;i++){if(i<pitMeta.entryMainIndex&&i>pitMeta.exitMainIndex+160)continue;const p=points[i],r=p.right,h=Math.hypot(r[0],r[2]);let q=pit[0],d=Infinity;for(let j=0;j<pit.length;j+=6){const v=pit[j],distance=(p.pos[0]-v.pos[0])**2+(p.pos[2]-v.pos[2])**2;if(distance<d){d=distance;q=v;}}if(d>200**2)continue;const lateral=((q.pos[0]-p.pos[0])*r[0]+(q.pos[2]-p.pos[2])*r[2])/h*side;if(lateral<=0)continue;if(lateral<54)allowed[i]=false;else fields[side][i]=Math.min(fields[side][i],(22+lateral-13)/2);}
+    if(pit)for(let i=0;i<points.length;i++){if(i<pitMeta.entryMainIndex&&i>pitMeta.exitMainIndex+160)continue;const p=points[i],r=p.right,h=Math.hypot(r[0],r[2]);let q=pit[0],d=Infinity;for(let j=0;j<pit.length;j+=6){const v=pit[j],distance=(p.pos[0]-v.pos[0])**2+(p.pos[2]-v.pos[2])**2;if(distance<d){d=distance;q=v;}}if(d>200**2)continue;const lateral=((q.pos[0]-p.pos[0])*r[0]+(q.pos[2]-p.pos[2])*r[2])/h*side;if(lateral<=0)continue;if(lateral<22+q.wr+19)allowed[i]=false;else fields[side][i]=Math.min(fields[side][i],(22+lateral-q.wr)/2);}
     for(let i=0;i<allowed.length-1;){if(!allowed[i]){i++;continue;}const start=i;while(i<allowed.length-1&&allowed[i])i++;const end=i,raw=points.slice(start,end+1).map((p,k)=>({...p,pos:offset(p,side*fields[side][start+k]),wr:.9,wl:.9,sourceIndex:start+k})),tidied=tidyBarrierLine(raw),line=tidied.points,ids=[];
       for(const [a,b] of adaptiveSegments(line,100,.4,7*Math.PI/180,.05)){const p=fittedSlab(line,a,b,{width:1.8,thickness:5,color:3,lift:4.95,guard:.3});p[5]+=1;const index=push('barriers',p);ids.push(index);spans.push({index,side,start:line[a].sourceIndex,end:line[b].sourceIndex,run:runs.length});}runs.push({side,start,end,indices:ids,path:line.map(p=>p.pos),removedLoops:tidied.removedLoops});
     }

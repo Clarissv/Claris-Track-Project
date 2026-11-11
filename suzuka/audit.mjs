@@ -4,6 +4,8 @@ import {inFootprint,topHeight,overlapVertices,auditJoins} from './lib/surface-au
 import {boxCorners,boxBasis} from './lib/geometry.mjs';
 import {dot,cross} from './lib/track-geometry.mjs';
 import {intersectsDomain} from './lib/domain.mjs';
+import {verifyRunoff} from './audit-runoff.mjs';
+import {verifyPitBase} from './pit-base.mjs';
 const plan=JSON.parse(fs.readFileSync(new URL('suzuka-plan.json',import.meta.url))),{parts,meta,centerline}=plan;
 const cells=new Map(),cell=64;for(const index of [...meta.groups.asphalt,...meta.groups.pitLane,...meta.groups.curbs,...meta.groups.terrain,...meta.groups.runoff,...meta.groups.gravel,...(meta.groups.barriers??[]),...(meta.groups.bridgeDeck??[])]){const p=parts[index],corners=boxCorners(p),xs=corners.map(p=>p[0]),zs=corners.map(p=>p[2]);for(let x=Math.floor(Math.min(...xs)/cell);x<=Math.floor(Math.max(...xs)/cell);x++)for(let z=Math.floor(Math.min(...zs)/cell);z<=Math.floor(Math.max(...zs)/cell);z++){const k=`${x}:${z}`;if(!cells.has(k))cells.set(k,[]);cells.get(k).push(index);}}
 const road=new Set([...meta.groups.asphalt,...meta.groups.pitLane]),hits=(x,z,y)=>{const result=[];for(const i of cells.get(`${Math.floor(x/cell)}:${Math.floor(z/cell)}`)??[]){const p=parts[i];if(inFootprint(p,[x,z])){const h=topHeight(p,x,z);if(Math.abs(h-y)<10)result.push({index:i,height:h});}}return result;};
@@ -18,7 +20,7 @@ const snakeLevel=report.elevation.landmarks.find(r=>r.name==='afterSnake'),chica
 assert.ok(Math.abs((snakeLevel.builtHeightStuds-chicaneLevel.builtHeightStuds)-(snakeLevel.sourceHeightStuds-chicaneLevel.sourceHeightStuds))<3,'After-Snake and chicane relative levels disagree with the GLB');
 assert.ok(snakeLevel.builtHeightStuds-degnerLevel.builtHeightStuds>20,'The downhill approach to Degner is lost');
 assert.ok(report.roadJoins.maxOverlapStep<.008,'Main ramp overlap has a lip');assert.ok(report.pitJoins.maxOverlapStep<.0062,'Pit ramp overlap has a lip');
-let pitMissing=0,pitError=0,pitSamples=0,pitObstacleRise=0,pitWorst;for(let i=0;i<meta.pitPoints.length;i++)for(const d of [-12,0,12]){const p=meta.pitPoints[i],r=p.right,h=Math.hypot(r[0],r[2]),x=p.pos[0]+r[0]/h*d,z=p.pos[2]+r[2]/h*d,y=p.pos[1]-(p.normal[0]*(x-p.pos[0])+p.normal[2]*(z-p.pos[2]))/p.normal[1],all=hits(x,z,y),found=all.filter(h=>road.has(h.index));pitSamples++;if(!found.length)pitMissing++;else{const error=Math.min(...found.map(h=>Math.abs(h.height-y)));pitError=Math.max(pitError,error);const rise=Math.max(...all.map(h=>h.height))-y;if(rise>pitObstacleRise){pitObstacleRise=rise;pitWorst={i,d,rise,all};}}}report.pit={samples:pitSamples,missing:pitMissing,maxSurfaceErrorStuds:pitError,maxObstacleRiseStuds:pitObstacleRise,worst:pitWorst};
+let pitMissing=0,pitError=0,pitSamples=0,pitObstacleRise=0,pitWorst;for(let i=0;i<meta.pitPoints.length;i++)for(const d of [-meta.pitPoints[i].wl+1,0,meta.pitPoints[i].wr-1]){const p=meta.pitPoints[i],r=p.right,h=Math.hypot(r[0],r[2]),x=p.pos[0]+r[0]/h*d,z=p.pos[2]+r[2]/h*d,y=p.pos[1]-(p.normal[0]*(x-p.pos[0])+p.normal[2]*(z-p.pos[2]))/p.normal[1],all=hits(x,z,y),found=all.filter(h=>road.has(h.index));pitSamples++;if(!found.length)pitMissing++;else{const error=Math.min(...found.map(h=>Math.abs(h.height-y)));pitError=Math.max(pitError,error);const rise=Math.max(...all.map(h=>h.height))-y;if(rise>pitObstacleRise){pitObstacleRise=rise;pitWorst={i,d,rise,all};}}}report.pit={samples:pitSamples,missing:pitMissing,maxSurfaceErrorStuds:pitError,maxObstacleRiseStuds:pitObstacleRise,worst:pitWorst};
 console.log(JSON.stringify(report));fs.writeFileSync(new URL('driving-audit.json',import.meta.url),JSON.stringify(report,null,2));
 assert.equal(missing,0,'Main racing lane has missing road coverage');assert.ok(maxRoadError<.015,'Main surface differs from the intended plane');assert.ok(maxObstacleRise<.02,'A colliding accessory protrudes into the racing lane');assert.ok(meta.bridge.minimumClearanceStuds>14,'Underpass is too low');
 assert.equal(pitMissing,0,'Pit lane lacks road coverage');assert.ok(pitError<.015,'Pit surface has a lip');assert.ok(pitObstacleRise<.04,'Pit lane is blocked by a kerb, barrier or terrain');
@@ -55,10 +57,14 @@ assert.ok(meta.pitLayout.entryBranchMainIndex<1130*8,'Pit split is too close to 
 const pitStraightX=meta.pitPoints[meta.pitLayout.straightStartIndex].pos[0],approach=pit.slice(0,meta.pitLayout.entryBlendEndMainIndex-entry+1);let reverseBends=0;
 for(let i=1;i<approach.length;i++)if(approach[i].pos[0]<approach[i-1].pos[0]-.0001||approach[i].pos[0]>pitStraightX+.0001)reverseBends++;
 assert.equal(reverseBends,0,'Pit approach doubles back before the straight');report.pit.reverseBends=reverseBends;
-const bendIndex=meta.pitLayout.entryBendMainIndex-entry,bendHeading=vector(pit[bendIndex-1].pos,pit[bendIndex+1].pos),bendAngle=Math.atan2(bendHeading[0],bendHeading[1]);let sweepAngle=bendAngle;
-for(let i=bendIndex+8;i<meta.pitLayout.straightStartIndex-8;i++){const v=vector(pit[i-1].pos,pit[i+1].pos);sweepAngle=Math.max(sweepAngle,Math.atan2(v[0],v[1]));}
-report.pit.approachSweepDegrees=(sweepAngle-bendAngle)*180/Math.PI;assert.ok(report.pit.approachSweepDegrees>5,'Pit entry lacks its independent approach curve');
+let previousHeading,extraTurn=0;for(let i=1;i<meta.pitLayout.straightStartIndex;i++){const v=vector(pit[i-1].pos,pit[i+1].pos),heading=Math.atan2(v[0],v[1]);if(previousHeading!==undefined)extraTurn=Math.max(extraTurn,heading-previousHeading);previousHeading=heading;}
+report.pit.maxEntryHeadingReversalDegrees=extraTurn*180/Math.PI;assert.equal(meta.pitLayout.entryNativeControls.length,1,'Pit entry has more than one approach curve');assert.ok(extraTurn<.00001,'Pit entry has an extra turn');
+assert.equal(pit[0].wr+pit[0].wl,21,'Pit entry width is incorrect');assert.equal(pit.at(-1).wr+pit.at(-1).wl,21,'Pit exit width is incorrect');
+for(let i=meta.pitLayout.straightStartIndex;i<=meta.pitLayout.exitStartIndex;i++)assert.equal(pit[i].wr+pit[i].wl,16,'Pit straight width is incorrect');
+assert.ok(pit.every(p=>p.wr+p.wl>=16&&p.wr+p.wl<=21),'Pit width taper exceeds the requested widths');
+report.pit.widths={entryStuds:21,laneStuds:16,exitStuds:21};
 fs.writeFileSync(new URL('driving-audit.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify({gravel:gravelChecks,pitTangents:{entryTangentError,exitTangentError,maxPitTurn},elevation:report.elevation}));
 for(const p of parts){assert.equal(p.length,13);assert.ok(p.every(Number.isFinite));assert.ok(p.slice(3,6).every(n=>n>=.001&&n<=2048));const b=boxBasis(p);assert.ok(Math.abs(dot(b.right,b.up))<.002);}
 const anchor=meta.placementAnchor.position;assert.ok(!parts.some(p=>intersectsDomain(p,{center:[anchor[0],anchor[2]],halfSize:200,guard:0})),'Starting square is obstructed');
-assert.ok(parts.length+1<9000);assert.ok(meta.terrain.clearanceAudit.maxProtrusionStuds<=0);console.log('Suzuka geometry and road coverage checks passed.');
+report.runoff=verifyRunoff(plan);report.pitBase=verifyPitBase(plan);fs.writeFileSync(new URL('driving-audit.json',import.meta.url),JSON.stringify(report,null,2));
+assert.ok(parts.length+1<9000);assert.ok(meta.terrain.clearanceAudit.maxProtrusionStuds<=0);console.log('Suzuka geometry, runoff transitions and road coverage checks passed.');

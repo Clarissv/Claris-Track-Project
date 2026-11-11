@@ -1,1 +1,13 @@
 import './compile-tidy.mjs';
+import fs from 'node:fs';
+import {smoothRunoff} from './smooth-runoff.mjs';
+import {boxCorners} from './lib/geometry.mjs';
+import {weldRunoff} from './weld-runoff.mjs';
+import {verifyRunoff} from './audit-runoff.mjs';
+import {addPitBase} from './pit-base.mjs';
+const here=new URL('./',import.meta.url),plan=addPitBase(weldRunoff(smoothRunoff(JSON.parse(fs.readFileSync(new URL('suzuka-plan.json',here))))));
+const corners=plan.parts.flatMap(boxCorners);plan.meta.planBounds={min:[0,1,2].map(k=>Math.min(...corners.map(p=>p[k]))),max:[0,1,2].map(k=>Math.max(...corners.map(p=>p[k])))};plan.meta.width=plan.meta.planBounds.max[0]-plan.meta.planBounds.min[0];plan.meta.depth=plan.meta.planBounds.max[2]-plan.meta.planBounds.min[2];
+if(plan.parts.length+1>=9000)throw Error('Suzuka exceeds 8999 total objects');
+plan.meta.terrain.addedParts=plan.meta.groups.terrain.length;plan.meta.terrain.totalWithExistingGrass=plan.parts.length+1;
+plan.meta.runoffRecovery.after=verifyRunoff(plan);
+fs.writeFileSync(new URL('suzuka-plan.json',here),JSON.stringify(plan));fs.writeFileSync(new URL('generation-report.json',here),JSON.stringify(plan.meta,null,2));const r=plan.meta.runoffRecovery.after;console.log(JSON.stringify({parts:plan.parts.length,roadEdgeDrop:r.maxRoadEdgeDropStuds,boundaryLip:r.maxBoundaryLipStuds,boundaryLips:r.boundaryLips.length,welds:plan.meta.terrain.boundaryWelds.length}));
