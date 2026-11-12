@@ -79,6 +79,11 @@ lower crossover road, while its concrete deck still sets the 14.43-stud minimum.
 
 ## Run the local package
 
+To move your current build and manually added catalog buildings to a friend's
+Jakarta private server, use the [build transfer helper](build-transfer/README.md).
+It captures the actual server objects into a local backup and reconstructs them;
+your friend saves the result through the normal owner interface.
+
 Extract `suzuka-executor.zip` into the executor workspace, preserving the
 `Suzuka` folder. Join **Jakarta, place 14005966837**, start a fresh build with
 only your existing grass plate, enable Build Tools, and stand outside your car.
