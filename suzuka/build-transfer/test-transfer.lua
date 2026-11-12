@@ -167,11 +167,14 @@ local function clear()for _,o in ipairs(builds:GetChildren())do o.Parent=nil end
 local function backupDocument()
     return http:JSONDecode(http:JSONDecode(files["jakarta-build-backup.json"]).payload)
 end
-local function rewriteBackup(document)
+local function draftDocument()
+    return http:JSONDecode(http:JSONDecode(files["jakarta-build-draft.json"]).payload)
+end
+local function rewriteBackup(document,path)
     -- Use the production sealing path by substituting an existing payload token.
     local payload=http:JSONEncode(document);local a,b=1,0
     for i=1,#payload do a=(a+payload:byte(i))%65521;b=(b+a)%65521 end
-    files["jakarta-build-backup.json"]=http:JSONEncode({format="jakarta-transfer-file-v1",payload=payload,bytes=#payload,checksum=string.format("%08x",b*65536+a)})
+    files[path or "jakarta-build-backup.json"]=http:JSONEncode({format="jakarta-transfer-file-v1",payload=payload,bytes=#payload,checksum=string.format("%08x",b*65536+a)})
 end
 local checks=0
 local function check(condition,message)assert(condition,message);checks=checks+1 end
@@ -450,6 +453,135 @@ fails(api.NewCopy,"unresolved")
 local detailed=api.Report().examples[1]
 check(detailed.class=="MeshPart" and detailed.position[1]==20 and detailed.reason~="Unrecognized catalog item","Unresolved report preserves class, position and specific failure")
 for i=1,3 do table.remove(entries)end;wedgeTemplate.Parent=nil;meshTemplate.Parent=nil;meshTemplateNew.Parent=nil
+-- Grass/foundation slabs belong in the backup without turning the default
+-- route into a sweep of their entire area. Bounds mode remains opt-in.
+clear();game.JobId="source-track-grass";workspace.StreamingEnabled=true;root.CFrame=cf(0,5,0)
+local wideGrass=duplicateTemplate(grass,"guid-grass",cf(),v(2048,2,2048));wideGrass.Parent=builds
+countOverride=function()return 2 end;api=load();api.Scan()
+check(api.Config.ScanMode=="track" and api.Report().captured==1,"Default track mode captures wide grass")
+local grassDraft=draftDocument()
+check(#grassDraft.scan.queue==1 and grassDraft.scan.queue[1].route,"Wide grass adds no automatic terrain sweep")
+local grassVisits=0
+onStream=function(position)grassVisits=grassVisits+1;assert(position.X==0 and position.Z==0,"Grass scan left the route anchor")end
+fails(api.Copy,"Backup is incomplete");onStream=nil
+check(grassVisits==1 and api.State=="stopped","Exhausted track route reports missing objects instead of claiming completion")
+game.JobId="source-bounds-grass";api=load();api.Config.ScanMode="bounds";api.Scan()
+local broadDraft=draftDocument();local reachesWideBounds=false
+for _,tile in ipairs(broadDraft.scan.queue)do
+    if not tile.fine and math.abs((tile.x+0.5)*broadDraft.scan.step)>900 then reachesWideBounds=true end
+end
+check(reachesWideBounds and #broadDraft.scan.queue>100,"Explicit bounds mode retains wide terrain scanning")
+countOverride=nil
+-- A long diagonal road needs points near both ends, without filling the empty
+-- corners of its axis-aligned bounding rectangle.
+clear();game.JobId="source-diagonal-track";local diagonal=math.sqrt(0.5)
+local diagonalFrame=cf(0,0,0,diagonal,0,diagonal,0,1,0,-diagonal,0,diagonal)
+duplicateTemplate(block,"guid-block",diagonalFrame,v(32,2,1024)).Parent=builds
+countOverride=function()return 2 end;api=load();api.Scan()
+local diagonalDraft=draftDocument();local diagonalPoints,nearEnds,withinRoad=0,false,true
+for _,tile in ipairs(diagonalDraft.scan.queue)do if tile.fine then
+    diagonalPoints=diagonalPoints+1
+    local localPoint=(diagonalFrame:Inverse()*cf(tile.px,tile.y,tile.pz)).Position
+    withinRoad=withinRoad and math.abs(localPoint.X)<=80 and math.abs(localPoint.Z)<=576
+    nearEnds=nearEnds or math.abs(localPoint.Z)>=448
+end end
+check(withinRoad and diagonalPoints>20 and diagonalPoints<100,"Diagonal route stays close to the road footprint")
+check(nearEnds,"Long track parts seed scan points near their ends")
+countOverride=nil
+-- Model footprints use the actual scaled child geometry and rotated pivot.
+clear();game.JobId="source-scaled-track-model"
+local hallTemplate=child(templates,"Model","guid-long-hall");hallTemplate.Size=v(200,10,16)
+local hallPart=child(hallTemplate,"Part","Hall");hallPart.CFrame=cf(96,0,0);hallPart.Size=v(200,10,16)
+entries[#entries+1]={name="Long hall",guid=hallTemplate.Name}
+local hall=duplicateTemplate(hallTemplate,"guid-long-hall",cf(1000,0,1000)*diagonalFrame,3);hall.Parent=builds
+countOverride=function()return 2 end;api=load();api.Scan()
+local hallDraft=draftDocument();local reachesScaledEnd,withinHall=false,true
+for _,tile in ipairs(hallDraft.scan.queue)do if tile.fine then
+    local localPoint=(hall:GetPivot():Inverse()*cf(tile.px,tile.y,tile.pz)).Position
+    reachesScaledEnd=reachesScaledEnd or localPoint.X>500
+    withinHall=withinHall and math.abs(localPoint.Z)<=88
+end end
+check(reachesScaledEnd and withinHall,"Rotated Model route reaches scaled child footprints")
+table.remove(entries);hallTemplate.Parent=nil;countOverride=nil
+-- Connected road pieces stream one section at a time around a bend. Captured
+-- records survive when earlier sections stream out; a pit building is reached.
+clear();game.JobId="source-connected-track";root.CFrame=cf(0,5,0)
+wideGrass.Parent=builds
+local routeObjects={
+    duplicateTemplate(block,"road-straight",cf(0,0,0),v(200,1,32)),
+    duplicateTemplate(block,"road-snake-1",cf(192,0,0),v(200,1,32)),
+    duplicateTemplate(block,"road-snake-2",cf(384,0,0),v(200,1,32)),
+    duplicateTemplate(block,"road-degner-1",cf(384,0,96),v(32,1,200)),
+    duplicateTemplate(block,"road-degner-2",cf(384,0,288),v(32,1,200)),
+    duplicateTemplate(building,"guid-building",cf(384,0,384),2),
+}
+routeObjects[1].Parent=builds
+local discovered={[1]=true};local discoveryOrder={1};local connectedVisits=0
+countOverride=function()return #routeObjects+1 end
+onStream=function(position)
+    connectedVisits=connectedVisits+1
+    for i,object in ipairs(routeObjects)do
+        if (position-object:GetPivot().Position).Magnitude<=100 then
+            object.Parent=builds
+            if not discovered[i]then discovered[i]=true;discoveryOrder[#discoveryOrder+1]=i end
+        else object.Parent=nil end
+    end
+end
+api=load();api.Copy();onStream=nil;countOverride=nil
+check(api.State=="copied" and #backupDocument().records==7,"Track route discovers successive streamed sections and a nearby building")
+check(#discoveryOrder==6 and discoveryOrder[2]==2 and discoveryOrder[3]==3 and discoveryOrder[4]==4,"Connected scan advances around the bend")
+check(connectedVisits<100 and api.Report().tilesQueued<200,"Connected track scan finishes without a grass sweep")
+-- Use the last visited area to choose the next point, including after reload.
+-- A fixed starting-point distance would instead jump back toward the origin.
+clear();game.JobId="source-track-last-visit";wideGrass.Parent=builds
+countOverride=function()return 2 end;api=load();api.Scan()
+local lastVisitDraft=draftDocument()
+lastVisitDraft.scan.focus={0,0,0};lastVisitDraft.scan.lastVisit={1000,0,0}
+lastVisitDraft.scan.queue={
+    {x=0,z=0,y=0,px=100,pz=0,fine=true,key="fine:test:origin"},
+    {x=5,z=0,y=0,px=1000,pz=0,fine=true,key="fine:test:near"},
+    {x=5,z=0,y=0,px=1100,pz=0,fine=true,key="fine:test:next"},
+}
+lastVisitDraft.scan.nextTile=1;rewriteBackup(lastVisitDraft,"jakarta-build-draft.json")
+local lastPositions={};api=load()
+onStream=function(position)lastPositions[#lastPositions+1]=position.X;if #lastPositions==2 then api.Pause()end end
+api.Copy();onStream=nil;countOverride=nil
+check(lastPositions[1]==1000 and lastPositions[2]==1100,"Traversal continues from the last visited point after reload")
+check(draftDocument().scan.lastVisit[1]==1100,"Pause persists the most recent scan position")
+-- Migrate a legacy draft: retain its visited prefix, fine/focus/route points,
+-- and captured objects even when none of those objects are currently streamed.
+clear();game.JobId="source-track-migrate";wideGrass.Parent=builds
+local distantRoad=duplicateTemplate(block,"guid-block",cf(3000,5,3000),v(32,1,200));distantRoad.Parent=builds
+countOverride=function()return 3 end;api=load();api.Config.ScanMode="bounds";api.Scan()
+local legacyDraft=draftDocument();local preservedKey=legacyDraft.records[1].sourceKey
+legacyDraft.scan.mode=nil;legacyDraft.scan.lastVisit=nil;legacyDraft.scan.focus={128,5,128};legacyDraft.scan.nextTile=3
+legacyDraft.scan.queue={
+    {x=-10,z=-10,y=5}, {x=-9,z=-10,y=5},
+    {x=100,z=100,y=0},
+    {x=26,z=26,y=5,px=5000,pz=5000,fine=true,key="fine:legacy:auto"},
+    {x=0,z=0,y=5,px=128,pz=128,fine=true,focused=true,key="fine:legacy:focus"},
+    {x=10,z=10,y=5,px=2000,pz=2000,route=true},
+}
+rewriteBackup(legacyDraft,"jakarta-build-draft.json");clear();api=load();api.Scan()
+local migrated=draftDocument();local keptOldFine,keptFocus,keptRoute,newTrack=false,false,false,false
+for _,tile in ipairs(migrated.scan.queue)do
+    keptOldFine=keptOldFine or tile.key=="fine:legacy:auto"
+    keptFocus=keptFocus or tile.key=="fine:legacy:focus" and tile.focused
+    keptRoute=keptRoute or tile.route and tile.px==2000
+    newTrack=newTrack or tile.track==true
+end
+check(api.Report().removedBounds==1 and migrated.scan.mode=="track","Migration removes only pending broad scan points")
+check(migrated.scan.nextTile==3 and migrated.scan.queue[1].x==-10 and migrated.scan.queue[2].x==-9,"Migration preserves the visited prefix and resume index")
+check(keptOldFine and keptFocus and keptRoute and newTrack,"Migration keeps focus/fine/route points and reseeds saved track geometry")
+check(#migrated.records==2 and migrated.records[1].sourceKey==preservedKey,"Migration preserves captured objects after streaming out")
+local migrationVisit
+onStream=function(position)
+    migrationVisit=position
+    duplicateTemplate(block,"guid-block",cf(128,5,128),v(4,4,4)).Parent=builds;onStream=nil
+end
+api.Copy();countOverride=nil
+check(migrationVisit.X==128 and migrationVisit.Z==128 and api.State=="copied","Migrated manual focus retains priority")
+check(#backupDocument().records==3,"Migrated capture completes with all old and newly discovered objects")
 -- Loader URLs and execution modes actually select the correct entry point.
 local requestedModes={}
 function game:HttpGet(url)check(url=="https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/suzuka/build-transfer/transfer.lua","Loader URL");return "return function() end" end

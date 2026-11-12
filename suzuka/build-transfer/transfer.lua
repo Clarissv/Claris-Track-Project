@@ -20,10 +20,11 @@ local config = {
     PlacementTimeout = 12, PlacementInterval = 0.15, CatalogMap = {},
     FpsMode = true, BatchSize = 32, WorkBudget = 0.004, DraftInterval = 30,
     NoClip = true, FocusRadius = 384, FocusStep = 64, FineTrackScan = true,
+    ScanMode = "track",
 }
 if old and old.Config and type(old.Config.FpsMode) == "boolean" then config.FpsMode = old.Config.FpsMode end
 for k, v in pairs(options.Config or {}) do assert(config[k] ~= nil, "Unknown setting: " .. k); config[k] = v end
-local api = {Config = config, Version = "2026-11-12-focus", State = "ready", Busy = false, Paused = false}
+local api = {Config = config, Version = "2026-11-12-track", State = "ready", Busy = false, Paused = false}
 _G.JakartaTransfer = api
 local statusLabel, screen, follower, capture, catalog, pending, freshCapture, fpsButton, fpsSession, pauseKey
 api.Metrics = {yields = 0, samples = 0, cacheHits = 0, catalogChecks = 0}
@@ -150,6 +151,8 @@ local function settings()
     assert(finite(config.DraftInterval) and config.DraftInterval >= 5 and config.DraftInterval <= 120, "DraftInterval must be 5..120")
     assert(type(config.NoClip) == "boolean", "NoClip must be true or false")
     assert(type(config.FineTrackScan) == "boolean", "FineTrackScan must be true or false")
+    assert(config.ScanMode == "track" or config.ScanMode == "bounds", "ScanMode must be track or bounds")
+    assert(config.ScanMode ~= "track" or config.FineTrackScan, "Track mode requires FineTrackScan")
     assert(finite(config.FocusRadius) and config.FocusRadius >= 64 and config.FocusRadius <= 1024, "FocusRadius must be 64..1024")
     assert(finite(config.FocusStep) and config.FocusStep >= 32 and config.FocusStep <= 64, "FocusStep must be 32..64")
     assert(type(readfile) == "function" and type(writefile) == "function", "Your executor needs readfile and writefile")
@@ -229,6 +232,7 @@ local function visit(position)
         end
     end
     character:PivotTo(CFrame.new(position + Vector3.new(0, 18, 0)))
+    if capture and capture.jobId == game.JobId and api.State == "copying" then capture.lastVisit = vec(position) end
     if workspace.StreamingEnabled then
         assert(not api.StreamRunning, "A streaming request is still pending; wait before resuming")
         local attempt = {done = false}; api.StreamRunning = attempt
@@ -479,17 +483,63 @@ local function rawKey(object)
     local size = model and numberKey(object:GetScale()) or arrayKey(vec(object.Size))
     return object.ClassName .. ":" .. object.Name .. ":" .. arrayKey(frame(cf)) .. ":" .. size
 end
-local function enqueue(position)
+local function enqueue(position, route)
     local step = capture.step
     local x, z = math.floor(position.X / step), math.floor(position.Z / step)
     local key = x .. ":" .. z
     if capture.queued[key] then return end
     assert(#capture.queue < config.MaxTiles, "Scan reached MaxTiles; finish by walking to the missing area and using Scan nearby")
     capture.queued[key] = true
-    capture.queue[#capture.queue + 1] = {x = x, z = z, y = position.Y}
+    capture.queue[#capture.queue + 1] = {x = x, z = z, y = position.Y, route = route, px = route and position.X or nil, pz = route and position.Z or nil}
+end
+local function seedFootprint(cf, size)
+    if size[1] > 128 and size[3] > 128 then return end
+    if #capture.queue >= config.MaxTiles - 256 then return end
+    local half = vector(size) / 2
+    local radiusX = math.abs(cf.RightVector.X) * half.X + math.abs(cf.UpVector.X) * half.Y + math.abs(cf.LookVector.X) * half.Z
+    local radiusZ = math.abs(cf.RightVector.Z) * half.X + math.abs(cf.UpVector.Z) * half.Y + math.abs(cf.LookVector.Z) * half.Z
+    local radiusY = math.abs(cf.RightVector.Y) * half.X + math.abs(cf.UpVector.Y) * half.Y + math.abs(cf.LookVector.Y) * half.Z
+    local inverse, levels = cf:Inverse(), {cf.Y}
+    if radiusY > 32 then
+        levels = {}
+        for py = cf.Y - radiusY, cf.Y + radiusY, 64 do levels[#levels + 1] = py end
+        levels[#levels + 1] = cf.Y + radiusY
+    end
+    for x = math.floor((cf.X - radiusX - 64) / 64), math.floor((cf.X + radiusX + 64) / 64) do
+        for z = math.floor((cf.Z - radiusZ - 64) / 64), math.floor((cf.Z + radiusZ + 64) / 64) do
+            for _, py in ipairs(levels) do
+                breathe(0)
+                if #capture.queue >= config.MaxTiles - 256 then return end
+                local px, pz = (x + 0.5) * 64, (z + 0.5) * 64
+                local localPoint = (inverse * CFrame.new(px, py, pz)).Position
+                if math.abs(localPoint.X) <= half.X + 64 and math.abs(localPoint.Y) <= half.Y + 64 and math.abs(localPoint.Z) <= half.Z + 64 then
+                    local key = "fine:auto:" .. x .. ":" .. math.floor(py / 32) .. ":" .. z
+                    if not capture.queued[key] then
+                        capture.queue[#capture.queue + 1] = {x = math.floor(px / capture.step), z = math.floor(pz / capture.step), y = py, px = px, pz = pz, key = key, fine = true, track = true}
+                        capture.queued[key] = true
+                    end
+                end
+            end
+        end
+    end
 end
 local function seedFineTrack(image)
-    if not config.FineTrackScan or not image or image.kind ~= "Part" or type(image.size) ~= "table" then return end
+    if not config.FineTrackScan or not image then return end
+    if config.ScanMode == "track" then
+        if image.kind == "Part" and type(image.size) == "table" then seedFootprint(cframe(image.cf), image.size)
+        elseif image.kind == "Model" then
+            local pivot = cframe(image.cf)
+            seedFootprint(pivot, {1, 1, 1})
+            for _, part in ipairs(image.parts) do
+                breathe()
+                local components = {unpackValues(part.cf)}
+                for i = 1, 3 do components[i] = components[i] * image.size end
+                seedFootprint(pivot * cframe(components), {part.size[1] * image.size, part.size[2] * image.size, part.size[3] * image.size})
+            end
+        end
+        return
+    end
+    if image.kind ~= "Part" or type(image.size) ~= "table" then return end
     if image.size[1] > 128 or image.size[3] > 128 or image.size[2] > 64 then return end
     local x, z, y = math.floor(image.cf[1] / 64), math.floor(image.cf[3] / 64), math.floor(image.cf[2] / 32)
     for dx = -1, 1 do for dz = -1, 1 do
@@ -503,7 +553,20 @@ local function seedFineTrack(image)
         end
     end end
 end
+local function restrictTrackQueue()
+    if config.ScanMode ~= "track" then return end
+    local kept, removed = {}, 0
+    for index, tile in ipairs(capture.queue) do
+        breathe()
+        if index < capture.nextTile or tile.fine or tile.route then kept[#kept + 1] = tile
+        else removed = removed + 1 end
+    end
+    capture.queue, capture.queued = kept, {}
+    for _, tile in ipairs(kept) do capture.queued[tile.key or (tile.x .. ":" .. tile.z)] = true end
+    capture.removedBounds = (capture.removedBounds or 0) + removed
+end
 local function expand(object)
+    if config.ScanMode == "track" then return end
     if not object:IsA("BasePart") and not object:IsA("Model") then return end
     local cf, size
     if object:IsA("Model") then cf, size = object:GetBoundingBox() else cf, size = object.CFrame, object.Size end
@@ -649,14 +712,14 @@ local function captureReport(includeExamples)
             end
         end
     end
-    return {version = api.Version, captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, focus = capture.focus, scan = api.ScanProgress, noClip = api.NoClipActive == true, metrics = api.Metrics}
+    return {version = api.Version, scanMode = config.ScanMode, removedBounds = capture.removedBounds or 0, captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, focus = capture.focus, scan = api.ScanProgress, noClip = api.NoClipActive == true, metrics = api.Metrics}
 end
 local function copyDocument(complete)
     return {
         format = "jakarta-build-v1", backupId = capture.id, complete = complete,
         source = {placeId = game.PlaceId, jobId = capture.jobId, userId = player.UserId, createdAt = capture.createdAt, expectedCount = capture.expected},
         records = capturedRecords(), report = captureReport(),
-        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile, focus = capture.focus} or nil,
+        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile, focus = capture.focus, lastVisit = capture.lastVisit, mode = config.ScanMode} or nil,
     }
 end
 local function saveDraft()
@@ -677,7 +740,7 @@ local function restoreDraft()
     assert(scan.step == config.GridStep, "Keep the draft's GridStep unchanged, or use NewCopy")
     assert(type(scan.queue) == "table" and #scan.queue <= config.MaxTiles and finite(scan.nextTile) and scan.nextTile % 1 == 0 and scan.nextTile >= 1 and scan.nextTile <= #scan.queue + 1, "Invalid draft scan")
     assert(type(document.backupId) == "string" and finite(document.source.expectedCount) and document.source.expectedCount >= 0 and type(document.records) == "table", "Invalid draft metadata")
-    local recovered = {id = document.backupId, jobId = game.JobId, createdAt = document.source.createdAt, expected = document.source.expectedCount, step = scan.step, queue = scan.queue, nextTile = scan.nextTile, focus = scan.focus, groups = {}, queued = {}}
+    local recovered = {id = document.backupId, jobId = game.JobId, createdAt = document.source.createdAt, expected = document.source.expectedCount, step = scan.step, queue = scan.queue, nextTile = scan.nextTile, focus = scan.focus, lastVisit = scan.lastVisit, groups = {}, queued = {}}
     if recovered.focus then
         assert(type(recovered.focus) == "table" and #recovered.focus == 3, "Invalid draft focus")
         for _, n in ipairs(recovered.focus) do assert(finite(n), "Invalid draft focus coordinate") end
@@ -685,11 +748,16 @@ local function restoreDraft()
         local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         if root then recovered.focus = vec(root.Position) end
     end
+    if recovered.lastVisit then
+        assert(type(recovered.lastVisit) == "table" and #recovered.lastVisit == 3, "Invalid draft last visit")
+        for _, n in ipairs(recovered.lastVisit) do assert(finite(n), "Invalid draft last visit coordinate") end
+    end
     for _, tile in ipairs(scan.queue) do
         breathe()
         assert(finite(tile.x) and tile.x % 1 == 0 and finite(tile.z) and tile.z % 1 == 0 and finite(tile.y), "Invalid draft scan position")
-        if tile.fine then
-            assert(type(tile.key) == "string" and finite(tile.px) and finite(tile.pz), "Invalid fine scan point")
+        if tile.fine or tile.route then
+            assert(finite(tile.px) and finite(tile.pz), "Invalid precise scan point")
+            if tile.fine then assert(type(tile.key) == "string", "Invalid fine scan point key") end
         end
         recovered.queued[tile.key or (tile.x .. ":" .. tile.z)] = true
     end
@@ -707,6 +775,7 @@ local function restoreDraft()
     end
     assert(serverCount() == recovered.expected, "Source object count changed since the draft; use NewCopy after editing stops")
     capture = recovered
+    restrictTrackQueue()
     for _, group in pairs(capture.groups) do breathe(); updateGroup(group) end
     for _, record in ipairs(document.records) do breathe(); seedFineTrack(record.image) end
     status("Resumed local draft from this source server")
@@ -723,13 +792,16 @@ local function startCapture()
         for i = 1, builder.Count, 20 do
             breathe()
             local ok, target = pcall(builder.GetTarget, i)
-            if ok and target and target.cf then enqueue(target.cf.Position) end
+            if ok and target and target.cf then
+                if config.ScanMode == "bounds" then enqueue(target.cf.Position)
+                elseif typeof(target.size) == "Vector3" then seedFineTrack({kind = "Part", cf = frame(target.cf), size = vec(target.size)}) end
+            end
         end
     end
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     assert(root, "Spawn your character first")
     capture.focus = vec(root.Position)
-    enqueue(root.Position)
+    enqueue(root.Position, true)
     captureNearby(); saveDraft()
 end
 local function run(label, operation)
@@ -775,6 +847,7 @@ function api.FocusHere(radius)
         end
         assert(#capture.queue + #points <= config.MaxTiles, "Focus area exceeds MaxTiles; use a smaller focus radius")
         capture.focus = vec(position)
+        capture.lastVisit = vec(position)
         for _, point in ipairs(points) do capture.queue[#capture.queue + 1] = point; capture.queued[point.key] = true end
         saveDraft()
         api.State = "ready"
@@ -790,7 +863,8 @@ local function nextScanTile()
         local tile = capture.queue[index]
         local priority = tile.focused and 0 or tile.fine and 1 or 2
         local px, pz = tile.px or (tile.x + 0.5) * capture.step, tile.pz or (tile.z + 0.5) * capture.step
-        local squared = capture.focus and ((px - capture.focus[1]) ^ 2 + (pz - capture.focus[3]) ^ 2) or index
+        local origin = capture.lastVisit or capture.focus
+        local squared = origin and ((px - origin[1]) ^ 2 + (pz - origin[3]) ^ 2 + (tile.y - origin[2]) ^ 2) or index
         if not best or priority < rank or priority == rank and squared < distance then best, rank, distance = index, priority, squared end
     end
     if not best then return end
@@ -851,6 +925,8 @@ function api.Copy()
         if not capture then startCapture() else loadCatalog() end
         assert(capture.jobId == game.JobId, "Join the original source server to continue this capture")
         assert(config.GridStep == capture.step, "Keep GridStep unchanged during a capture")
+        restrictTrackQueue()
+        captureNearby()
         local lastStatus = os.clock()
         while not api.Paused do
             local report = captureReport()

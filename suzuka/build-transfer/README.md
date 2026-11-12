@@ -23,7 +23,8 @@ cannot recover manually added buildings.
    assert(loadstring(readfile("JakartaTransfer/copy-local.lua")))()
    ```
 
-   The helper moves your character around to stream distant objects. Wait for
+   The helper follows the placed track and nearby building parts to stream
+   further sections. Start near the circuit or pit. Wait for
    **COPY COMPLETE** before leaving. It writes and reads back
    `jakarta-build-backup.json` in the executor workspace and reconciles the
    captured root count with the server count. A draft is incomplete and cannot
@@ -98,12 +99,32 @@ executor, wait for **Paused**, then run the updated Copy loader in the same
 source server. Keep the existing backup, draft and progress files; the updated
 helper reads the same formats and resumes the draft.
 
-## Focus the pit and starting straight
+## Follow the circuit and focus nearby buildings
+
+`Config.ScanMode` defaults to `"track"`. Captured narrow Parts seed scan points
+along their rotated footprints, including long road sections and separate height
+levels. Models seed their pivot and scaled child part footprints. Newly streamed
+sections add more points, so the route can advance around the circuit. The next
+automatic point is chosen from the last visited location, including after a
+reload; it does not enforce a named corner order.
+
+Large slabs wider than 128 studs in both horizontal dimensions are captured but
+do not seed a sweep of the grass or foundation. Loading an older draft in track
+mode removes pending broad scan areas while preserving captured objects, the
+visited prefix and fine/focus points. Captured geometry reseeds the track route.
+The original source server and unchanged object count are still required.
+
+Track mode needs streamed track/building parts to discover further sections.
+Stand near the circuit before starting. An isolated area separated by a large
+gap may need **Focus here** or **Scan nearby**. Exhausting the route with missing
+objects stops with an incomplete report; it never marks that backup complete.
+For an intentional wider sweep, set `Config.ScanMode = "bounds"` before starting
+a fresh Copy.
 
 If the captured count stops increasing while the area counter advances, pause
 with **F8**, walk to the pit or starting straight, press **Focus here (nearby
 buildings)**, then **Copy / Resume scan**. The focus queues 64-stud scan points
-within a 384-stud radius at your current height, ahead of the broad scan. It
+within a 384-stud radius at your current height, ahead of the automatic route. It
 keeps the accumulated objects and persists the focus in the same draft. Repeat
 at another part of the pit, or another height for tall buildings, if needed.
 
@@ -115,13 +136,9 @@ _G.JakartaTransfer.Copy()
 ```
 
 An optional argument selects the radius, for example `FocusHere(512)`. Focus
-points are checked before other fine points and broad terrain areas. Remaining
-areas are retained, so focusing does not limit which objects belong in the backup.
-
-The helper also adds 64-stud scan points around small captured Parts and separates
-their height levels. This fills gaps that a 192-stud grid can leave when the live
-streaming radius shrinks. Large terrain footprints remain available as the broad
-scan. Automatic fine points reserve queue space for later bounds/focus areas.
+points are checked before other automatic points. Remaining track points are
+retained, so focusing does not limit which objects belong in the backup.
+Automatic points reserve queue space for a manual focus area.
 
 `Scanning X / Y streamed objects` shows progress inside the current area. The
 captured count updates after that scan is merged into the backup snapshot.
@@ -176,8 +193,9 @@ between scan areas after that interval; pause, stop and finish also write one.
 Smaller batches yield more often. Pausing during a scan preserves the partial
 snapshot and revisits that area on resume.
 `Config.FocusRadius` defaults to 384, `Config.FocusStep` to 64 and
-`Config.FineTrackScan` to true. Keep `Config.GridStep` unchanged when resuming an
-existing draft; fine/focus points work alongside that saved grid.
+`Config.FineTrackScan` to true, which track mode requires. Keep `Config.GridStep`
+unchanged when resuming an existing draft; precise track/focus points use their
+own saved positions alongside that grid.
 
 ## Supported build and verification limits
 
@@ -214,14 +232,18 @@ draft recovery after reload, mixed Model colors, default parts without Plus,
 pause/resume, late/rejected placement, durable pending requests, corrupted backups,
 catalog validation and loader modes with offline doubles. Actual Roblox placement,
 driving and the friend's save/reload still require an in-game session.
-All 97 behavioral checks passed locally on 2026-11-12, including large-scan
+All 116 behavioral checks passed locally on 2026-11-12, including large-scan
 pause/resume, cache invalidation, chunked checksums, FPS toggle/restoration and
 the panel's F8 binding. A regression with 400 additional catalog entries checks
 that unknown blocks use about one verified catalog comparison per sample even
 when nested containers prevent Part caching. Additional checks exercise focus
 preservation after reload, missing objects at coarse-grid corners and different
 heights, noclip resets/new body parts/restoration, leaf metadata caching,
-native wedge/mesh catalog resolution, and detailed unresolved reports. The local package was
+native wedge/mesh catalog resolution, and detailed unresolved reports. Track mode
+checks cover broad-slab capture without a terrain sweep, explicit bounds mode,
+long diagonal roads, scaled Model footprints, connected sections that stream in
+and out around a bend, selection from the last visited position, and migration
+of legacy drafts without losing captured objects or manual focus. The local package was
 also opened and its four archived files compared with the current sources.
 
 The package script defaults to `Suzuka/jakarta-transfer.zip` in the parent source
