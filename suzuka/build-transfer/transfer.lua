@@ -19,15 +19,17 @@ local config = {
     StreamTimeout = 5, SettleTime = 0.5, MaxTiles = 4096,
     PlacementTimeout = 12, PlacementInterval = 0.15, CatalogMap = {},
     FpsMode = true, BatchSize = 32, WorkBudget = 0.004, DraftInterval = 30,
-    NoClip = true, FocusRadius = 384, FocusStep = 64, FineTrackScan = true,
+    NoClip = true, FocusRadius = 384, FocusStep = 32, FineTrackScan = true,
     ScanMode = "track",
+    StallAreas = 24, StallSeconds = 60, RecoveryRadius = 256, RecoverySettleTime = 1,
 }
 if old and old.Config and type(old.Config.FpsMode) == "boolean" then config.FpsMode = old.Config.FpsMode end
 for k, v in pairs(options.Config or {}) do assert(config[k] ~= nil, "Unknown setting: " .. k); config[k] = v end
-local api = {Config = config, Version = "2026-11-12-track", State = "ready", Busy = false, Paused = false}
+local api = {Config = config, Version = "2026-11-12-discovery", State = "ready", Busy = false, Paused = false}
 _G.JakartaTransfer = api
 local statusLabel, screen, follower, capture, catalog, pending, freshCapture, fpsButton, fpsSession, pauseKey
-api.Metrics = {yields = 0, samples = 0, cacheHits = 0, catalogChecks = 0}
+api.Metrics = {yields = 0, samples = 0, cacheHits = 0, discoveryHits = 0, catalogChecks = 0}
+local observed = setmetatable({}, {__mode = "k"})
 local workUnits, lastYield = 0, os.clock()
 local function breathe(units)
     workUnits = workUnits + (units or 1)
@@ -153,6 +155,10 @@ local function settings()
     assert(type(config.FineTrackScan) == "boolean", "FineTrackScan must be true or false")
     assert(config.ScanMode == "track" or config.ScanMode == "bounds", "ScanMode must be track or bounds")
     assert(config.ScanMode ~= "track" or config.FineTrackScan, "Track mode requires FineTrackScan")
+    assert(finite(config.StallAreas) and config.StallAreas >= 4 and config.StallAreas <= 128 and config.StallAreas % 1 == 0, "StallAreas must be 4..128")
+    assert(finite(config.StallSeconds) and config.StallSeconds >= 10 and config.StallSeconds <= 300, "StallSeconds must be 10..300")
+    assert(finite(config.RecoveryRadius) and config.RecoveryRadius >= 64 and config.RecoveryRadius <= 256, "RecoveryRadius must be 64..256")
+    assert(finite(config.RecoverySettleTime) and config.RecoverySettleTime >= 0.5 and config.RecoverySettleTime <= 3, "RecoverySettleTime must be 0.5..3")
     assert(finite(config.FocusRadius) and config.FocusRadius >= 64 and config.FocusRadius <= 1024, "FocusRadius must be 64..1024")
     assert(finite(config.FocusStep) and config.FocusStep >= 32 and config.FocusStep <= 64, "FocusStep must be 32..64")
     assert(type(readfile) == "function" and type(writefile) == "function", "Your executor needs readfile and writefile")
@@ -214,7 +220,7 @@ local function noclipCharacter(held)
         end
     end
 end
-local function visit(position)
+local function visit(position, settleTime)
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -244,7 +250,7 @@ local function visit(position)
         repeat task.wait(0.05) until attempt.done or os.clock() >= deadline
         assert(attempt.done and attempt.ok, "Streaming failed/timed out: " .. tostring(attempt.error))
     end
-    task.wait(config.SettleTime)
+    task.wait(settleTime or config.SettleTime)
 end
 local function meshInfo(part)
     if part:IsA("MeshPart") then return "MeshPart:" .. part.MeshId .. ":" .. part.TextureID end
@@ -494,7 +500,15 @@ local function enqueue(position, route)
 end
 local function seedFootprint(cf, size)
     if size[1] > 128 and size[3] > 128 then return end
-    if #capture.queue >= config.MaxTiles - 256 then return end
+    -- Exact centres reach small streamed roots that can be missed by the
+    -- diagonal offset from a grid centre. Reserve room for close pit recovery.
+    local reserve = math.min(512, math.floor(config.MaxTiles / 4))
+    if #capture.queue >= config.MaxTiles - reserve then return end
+    local anchorKey = "fine:anchor:" .. math.floor(cf.X / 32) .. ":" .. math.floor(cf.Y / 32) .. ":" .. math.floor(cf.Z / 32)
+    if not capture.queued[anchorKey] then
+        capture.queue[#capture.queue + 1] = {x = math.floor(cf.X / capture.step), z = math.floor(cf.Z / capture.step), y = cf.Y, px = cf.X, pz = cf.Z, key = anchorKey, fine = true, anchor = true, track = true}
+        capture.queued[anchorKey] = true
+    end
     local half = vector(size) / 2
     local radiusX = math.abs(cf.RightVector.X) * half.X + math.abs(cf.UpVector.X) * half.Y + math.abs(cf.LookVector.X) * half.Z
     local radiusZ = math.abs(cf.RightVector.Z) * half.X + math.abs(cf.UpVector.Z) * half.Y + math.abs(cf.LookVector.Z) * half.Z
@@ -509,7 +523,7 @@ local function seedFootprint(cf, size)
         for z = math.floor((cf.Z - radiusZ - 64) / 64), math.floor((cf.Z + radiusZ + 64) / 64) do
             for _, py in ipairs(levels) do
                 breathe(0)
-                if #capture.queue >= config.MaxTiles - 256 then return end
+                if #capture.queue >= config.MaxTiles - reserve then return end
                 local px, pz = (x + 0.5) * 64, (z + 0.5) * 64
                 local localPoint = (inverse * CFrame.new(px, py, pz)).Position
                 if math.abs(localPoint.X) <= half.X + 64 and math.abs(localPoint.Y) <= half.Y + 64 and math.abs(localPoint.Z) <= half.Z + 64 then
@@ -632,48 +646,70 @@ local function updateGroup(group)
     capture.unresolved = (capture.unresolved or 0) + unresolved - (group.unresolved or 0)
     group.count, group.unresolved = complete + unresolved, unresolved
 end
-local function captureNearby()
+local function captureNearby(full, verifySource)
     assert(capture and capture.jobId == game.JobId, "Start Copy in this source server first")
-    local localGroups = {}
+    full = full ~= false
+    local localGroups, changed = {}, {}
     local finished = true
     local objects = buildFolder():GetChildren()
     local lastScanStatus = os.clock()
     status(string.format("Scanning 0 / %d streamed objects; %d / %d already captured", #objects, capture.total or 0, capture.expected))
-    api.ScanProgress = {checked = 0, total = #objects}
+    api.ScanProgress = {checked = 0, total = #objects, full = full, sampled = 0, reused = 0}
     for index, object in ipairs(objects) do
-        breathe()
+        -- A discovery pass walks existing references cheaply. Full validation
+        -- still runs for manual Scan and before completing the backup.
+        breathe(full and 1 or 0)
         if api.Busy and api.Paused then finished = false; break end
-        local record = captureObject(object)
+        local previous = observed[object]
+        local record
+        if not full and previous and not previous.error then
+            record = previous
+            api.Metrics.discoveryHits = api.Metrics.discoveryHits + 1
+            api.ScanProgress.reused = api.ScanProgress.reused + 1
+        else
+            record = captureObject(object)
+            if verifySource and previous and not previous.error then
+                local complete = record.image and #record.image.parts >= #previous.image.parts
+                assert(not complete or not record.error and recordKey(record) == recordKey(previous), "Source object changed during copying; stop editing and use NewCopy. Draft preserved.")
+                assert(record.image, "Source object no longer validates; draft preserved")
+            end
+            observed[object] = record
+            api.ScanProgress.sampled = api.ScanProgress.sampled + 1
+        end
         local key = record.sourceKey
+        if full or record ~= previous or record.error then changed[key] = true end
         localGroups[key] = localGroups[key] or {}
         localGroups[key][#localGroups[key] + 1] = record
         api.ScanProgress.checked = index
         if os.clock() - lastScanStatus >= 1 then
             lastScanStatus = os.clock()
-            status(string.format("Scanning %d / %d streamed objects; %d / %d already captured", index, #objects, capture.total or 0, capture.expected))
+            status(string.format("Scanning %d / %d; %d new/rechecked, %d reused; %d / %d captured", index, #objects, api.ScanProgress.sampled, api.ScanProgress.reused, capture.total or 0, capture.expected))
         end
     end
     for key, records in pairs(localGroups) do
-        breathe()
-        local group = capture.groups[key] or {complete = {}, maxCount = 0, errors = {}}
-        local complete, errors = {}, {}
-        group.maxCount = math.max(group.maxCount, #records)
-        for _, record in ipairs(records) do
-            if record.error then errors[#errors + 1] = record else
-                local fingerprint = recordKey(record)
-                complete[fingerprint] = complete[fingerprint] or {}
-                complete[fingerprint][#complete[fingerprint] + 1] = record
+        breathe(0)
+        if changed[key] then
+            breathe()
+            local group = capture.groups[key] or {complete = {}, maxCount = 0, errors = {}}
+            local complete, errors = {}, {}
+            group.maxCount = math.max(group.maxCount, #records)
+            for _, record in ipairs(records) do
+                if record.error then errors[#errors + 1] = record else
+                    local fingerprint = recordKey(record)
+                    complete[fingerprint] = complete[fingerprint] or {}
+                    complete[fingerprint][#complete[fingerprint] + 1] = record
+                end
             end
+            -- Keep the greatest observed multiplicity of each appearance, including
+            -- coincident objects that stream in separate snapshots. A later partial
+            -- Model cannot replace its previously captured complete contents.
+            for fingerprint, matches in pairs(complete) do
+                if #matches >= #(group.complete[fingerprint] or {}) then group.complete[fingerprint] = matches end
+            end
+            if #errors > 0 then group.errors = errors end
+            updateGroup(group)
+            capture.groups[key] = group
         end
-        -- Keep the greatest observed multiplicity of each appearance, including
-        -- coincident objects that stream in separate snapshots. A later partial
-        -- Model cannot replace its previously captured complete contents.
-        for fingerprint, matches in pairs(complete) do
-            if #matches >= #(group.complete[fingerprint] or {}) then group.complete[fingerprint] = matches end
-        end
-        if #errors > 0 then group.errors = errors end
-        updateGroup(group)
-        capture.groups[key] = group
     end
     return finished
 end
@@ -712,14 +748,14 @@ local function captureReport(includeExamples)
             end
         end
     end
-    return {version = api.Version, scanMode = config.ScanMode, removedBounds = capture.removedBounds or 0, captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, focus = capture.focus, scan = api.ScanProgress, noClip = api.NoClipActive == true, metrics = api.Metrics}
+    return {version = api.Version, scanMode = config.ScanMode, removedBounds = capture.removedBounds or 0, captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, focus = capture.focus, recovery = capture.recovery, idleAreas = capture.idleAreas or 0, scan = api.ScanProgress, noClip = api.NoClipActive == true, metrics = api.Metrics}
 end
 local function copyDocument(complete)
     return {
         format = "jakarta-build-v1", backupId = capture.id, complete = complete,
         source = {placeId = game.PlaceId, jobId = capture.jobId, userId = player.UserId, createdAt = capture.createdAt, expectedCount = capture.expected},
         records = capturedRecords(), report = captureReport(),
-        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile, focus = capture.focus, lastVisit = capture.lastVisit, mode = config.ScanMode} or nil,
+        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile, focus = capture.focus, lastVisit = capture.lastVisit, mode = config.ScanMode, recovery = capture.recovery} or nil,
     }
 end
 local function saveDraft()
@@ -751,6 +787,10 @@ local function restoreDraft()
     if recovered.lastVisit then
         assert(type(recovered.lastVisit) == "table" and #recovered.lastVisit == 3, "Invalid draft last visit")
         for _, n in ipairs(recovered.lastVisit) do assert(finite(n), "Invalid draft last visit coordinate") end
+    end
+    if scan.recovery then
+        assert(type(scan.recovery) == "table" and type(scan.recovery.id) == "string" and finite(scan.recovery.points) and scan.recovery.points % 1 == 0 and scan.recovery.points >= 1 and scan.recovery.points <= config.MaxTiles and finite(scan.recovery.checked) and scan.recovery.checked % 1 == 0 and scan.recovery.checked >= 0 and scan.recovery.checked <= scan.recovery.points, "Invalid draft recovery pass")
+        recovered.recovery = scan.recovery
     end
     for _, tile in ipairs(scan.queue) do
         breathe()
@@ -785,6 +825,7 @@ local function startCapture()
     access(); settings(); loadCatalog()
     if restoreDraft() then return end
     freshCapture = nil
+    observed = setmetatable({}, {__mode = "k"})
     capture = {id = http:GenerateGUID(false), jobId = game.JobId, createdAt = os.time(), expected = serverCount(), groups = {}, queue = {}, queued = {}, nextTile = 1, step = config.GridStep}
     -- Prioritize the whole known circuit if its builder is still in memory.
     local builder = _G.SuzukaBuilder
@@ -827,6 +868,33 @@ function api.Scan()
         return report
     end)
 end
+local function addFocus(position, radius, step, heights, recovery)
+    local points, pass = {}, http:GenerateGUID(false)
+    for _, offset in ipairs(heights) do
+        local py = position.Y + offset
+        points[#points + 1] = {x = math.floor(position.X / capture.step), z = math.floor(position.Z / capture.step), y = py, px = position.X, pz = position.Z, fine = true, focused = true, anchor = true, recovery = recovery and pass or nil, key = "fine:" .. pass .. ":centre:" .. offset}
+        for x = math.floor((position.X - radius) / step), math.floor((position.X + radius) / step) do
+            for z = math.floor((position.Z - radius) / step), math.floor((position.Z + radius) / step) do
+                breathe(0)
+                local px, pz = (x + 0.5) * step, (z + 0.5) * step
+                if (px - position.X) ^ 2 + (pz - position.Z) ^ 2 <= radius ^ 2 then
+                    points[#points + 1] = {x = math.floor(px / capture.step), z = math.floor(pz / capture.step), y = py, px = px, pz = pz, fine = true, focused = true, recovery = recovery and pass or nil, key = "fine:" .. pass .. ":" .. x .. ":" .. offset .. ":" .. z}
+                end
+            end
+        end
+    end
+    assert(#capture.queue + #points <= config.MaxTiles, "Focus area exceeds MaxTiles; use a smaller focus radius")
+    for _, point in ipairs(points) do capture.queue[#capture.queue + 1] = point; capture.queued[point.key] = true end
+    capture.lastVisit = vec(position)
+    return #points, pass
+end
+local function recoverPit()
+    local position = vector(capture.focus)
+    local count, pass = addFocus(position, config.RecoveryRadius, 32, {0, 64}, true)
+    capture.recovery = {id = pass, points = count, checked = 0}
+    saveDraft()
+    status(string.format("Count stalled: %d / %d. Checking pit/start area at 32-stud spacing (%d points, two heights).", capture.total or 0, capture.expected, count))
+end
 function api.FocusHere(radius)
     return run("copying", function()
         if not capture then startCapture() end
@@ -834,25 +902,14 @@ function api.FocusHere(radius)
         assert(root, "Spawn your character first")
         radius = radius or config.FocusRadius
         assert(finite(radius) and radius >= 64 and radius <= 1024, "Focus radius must be 64..1024")
-        local position, step, points = root.Position, config.FocusStep, {}
-        local pass = http:GenerateGUID(false)
-        for x = math.floor((position.X - radius) / step), math.floor((position.X + radius) / step) do
-            for z = math.floor((position.Z - radius) / step), math.floor((position.Z + radius) / step) do
-                breathe(0)
-                local px, pz = (x + 0.5) * step, (z + 0.5) * step
-                if (px - position.X) ^ 2 + (pz - position.Z) ^ 2 <= radius ^ 2 then
-                    points[#points + 1] = {x = math.floor(px / capture.step), z = math.floor(pz / capture.step), y = position.Y, px = px, pz = pz, fine = true, focused = true, key = "fine:" .. pass .. ":" .. x .. ":" .. z}
-                end
-            end
-        end
-        assert(#capture.queue + #points <= config.MaxTiles, "Focus area exceeds MaxTiles; use a smaller focus radius")
+        local position = root.Position
+        local points = addFocus(position, radius, config.FocusStep, {0}, false)
         capture.focus = vec(position)
-        capture.lastVisit = vec(position)
-        for _, point in ipairs(points) do capture.queue[#capture.queue + 1] = point; capture.queued[point.key] = true end
+        capture.recovery = nil
         saveDraft()
         api.State = "ready"
-        status(string.format("Focus here: %d close scan points queued; %d / %d captured. Press Copy / Resume.", #points, capture.total or 0, capture.expected))
-        return #points
+        status(string.format("Focus here: %d close scan points queued; %d / %d captured. Press Copy / Resume.", points, capture.total or 0, capture.expected))
+        return points
     end)
 end
 local function nextScanTile()
@@ -861,7 +918,7 @@ local function nextScanTile()
         breathe(0)
         if api.Paused then return end
         local tile = capture.queue[index]
-        local priority = tile.focused and 0 or tile.fine and 1 or 2
+        local priority = tile.focused and 0 or tile.anchor and 1 or tile.fine and 2 or 3
         local px, pz = tile.px or (tile.x + 0.5) * capture.step, tile.pz or (tile.z + 0.5) * capture.step
         local origin = capture.lastVisit or capture.focus
         local squared = origin and ((px - origin[1]) ^ 2 + (pz - origin[3]) ^ 2 + (tile.y - origin[2]) ^ 2) or index
@@ -873,7 +930,8 @@ local function nextScanTile()
 end
 local function finishCopy()
     assert(capture, "Run Copy first")
-    captureNearby()
+    status("Validating all currently streamed objects before completion...")
+    captureNearby(true, true)
     if api.Paused then saveDraft(); return end
     local report = captureReport()
     local current = serverCount()
@@ -926,8 +984,9 @@ function api.Copy()
         assert(capture.jobId == game.JobId, "Join the original source server to continue this capture")
         assert(config.GridStep == capture.step, "Keep GridStep unchanged during a capture")
         restrictTrackQueue()
-        captureNearby()
-        local lastStatus = os.clock()
+        captureNearby(false)
+        local lastStatus, lastGrowth, idleAreas, recoveryIdle = os.clock(), os.clock(), 0, 0
+        capture.idleAreas = 0
         while not api.Paused do
             local report = captureReport()
             assert(report.captured <= capture.expected, "Captured extra source identities; stop editing and use NewCopy in this source server")
@@ -936,15 +995,35 @@ function api.Copy()
                 if api.Paused then break end
                 return finishCopy()
             end
+            if config.ScanMode == "track" and capture.focus and not capture.recovery and (idleAreas >= config.StallAreas or os.clock() - lastGrowth >= config.StallSeconds) then
+                recoverPit()
+                idleAreas, lastGrowth = 0, os.clock()
+            end
+            assert(recoveryIdle < config.StallAreas * 2, string.format("No new objects after %d close recovery checks: %d / %d captured. Draft preserved. Keep this server open; move to the pit, press Focus here, then Copy / Resume.", recoveryIdle, report.captured, capture.expected))
             local tile = nextScanTile()
+            if not tile and not api.Paused and config.ScanMode == "track" and capture.focus and not capture.recovery then
+                recoverPit()
+                tile = nextScanTile()
+            end
             if not tile then break end
-            visit(Vector3.new(tile.px or (tile.x + 0.5) * capture.step, tile.y, tile.pz or (tile.z + 0.5) * capture.step))
+            visit(Vector3.new(tile.px or (tile.x + 0.5) * capture.step, tile.y, tile.pz or (tile.z + 0.5) * capture.step), tile.recovery and math.max(config.SettleTime, config.RecoverySettleTime) or nil)
             if api.Paused then break end
-            if captureNearby() then capture.nextTile = capture.nextTile + 1 end
+            local beforeCount = capture.total or 0
+            if captureNearby(false) then
+                capture.nextTile = capture.nextTile + 1
+                if tile.recovery and capture.recovery and tile.recovery == capture.recovery.id then capture.recovery.checked = capture.recovery.checked + 1 end
+                if (capture.total or 0) > beforeCount then
+                    idleAreas, recoveryIdle, lastGrowth = 0, 0, os.clock()
+                else
+                    idleAreas = idleAreas + 1
+                    if tile.recovery then recoveryIdle = recoveryIdle + 1 end
+                end
+                capture.idleAreas = idleAreas
+            end
             if os.clock() - (capture.lastDraft or 0) >= config.DraftInterval then saveDraft() end
             if os.clock() - lastStatus >= 1 then
                 report = captureReport(); lastStatus = os.clock()
-                status(string.format("Copy: %d / %d objects; %d unresolved; visited %d areas", report.captured, report.expected, report.unresolved, report.tilesVisited))
+                status(string.format("Copy: %d / %d; %d unresolved; %d areas; %d scans without new objects%s", report.captured, report.expected, report.unresolved, report.tilesVisited, idleAreas, capture.recovery and string.format("; pit %d / %d", capture.recovery.checked, capture.recovery.points) or ""))
             end
         end
         saveDraft()

@@ -83,10 +83,16 @@ Terrain, track and building collision settings are unchanged. Set
 
 The panel opens on the right, above the game's HUD. Press **F8** to pause when
 using the mouse is difficult. The scan yields between small batches and reuses
-unchanged Part, wedge and MeshPart snapshots. Leaf owner/placement metadata can
-be cached; mesh identity, geometry and appearance changes invalidate the cache.
-Models, nested containers, child meshes and texture descendants are resampled
-to check streaming completeness. Unknown plain blocks use a verified
+unchanged Part, wedge and MeshPart snapshots during full scans. Leaf
+owner/placement metadata can be cached; mesh identity, geometry and appearance
+changes invalidate that cache. Full scans resample Models and nested geometry.
+During automatic discovery, successful snapshots of already observed roots are
+reused, including Models and Parts with runtime containers. Only new instances
+and unresolved roots need geometry/catalog work on each visit. Re-streamed
+instances are sampled again, with overlapping multiplicity retained. Manual
+**Scan nearby** and final backup verification perform full checks, including
+checking successful observations for source changes before completion.
+Unknown plain blocks use a verified
 equivalent standard catalog template rather than comparing every catalog item
 again for each slab. Models are compared only against templates with matching
 root type and descendant counts; complete geometry/appearance checks still apply.
@@ -101,7 +107,9 @@ helper reads the same formats and resumes the draft.
 
 ## Follow the circuit and focus nearby buildings
 
-`Config.ScanMode` defaults to `"track"`. Captured narrow Parts seed scan points
+`Config.ScanMode` defaults to `"track"`. Captured narrow Parts seed exact centre
+visits ahead of their grid points. This reaches roots that can be missed by the
+offset from a grid cell centre when streaming distance shrinks. Parts seed points
 along their rotated footprints, including long road sections and separate height
 levels. Models seed their pivot and scaled child part footprints. Newly streamed
 sections add more points, so the route can advance around the circuit. The next
@@ -117,13 +125,14 @@ The original source server and unchanged object count are still required.
 Track mode needs streamed track/building parts to discover further sections.
 Stand near the circuit before starting. An isolated area separated by a large
 gap may need **Focus here** or **Scan nearby**. Exhausting the route with missing
-objects stops with an incomplete report; it never marks that backup complete.
+objects tries nearby recovery and then stops with an incomplete report; it never
+marks that backup complete.
 For an intentional wider sweep, set `Config.ScanMode = "bounds"` before starting
 a fresh Copy.
 
 If the captured count stops increasing while the area counter advances, pause
 with **F8**, walk to the pit or starting straight, press **Focus here (nearby
-buildings)**, then **Copy / Resume scan**. The focus queues 64-stud scan points
+buildings)**, then **Copy / Resume scan**. The focus queues 32-stud scan points
 within a 384-stud radius at your current height, ahead of the automatic route. It
 keeps the accumulated objects and persists the focus in the same draft. Repeat
 at another part of the pit, or another height for tall buildings, if needed.
@@ -139,6 +148,20 @@ An optional argument selects the radius, for example `FocusHere(512)`. Focus
 points are checked before other automatic points. Remaining track points are
 retained, so focusing does not limit which objects belong in the backup.
 Automatic points reserve queue space for a manual focus area.
+
+After 24 automatic areas without a new object, or 60 seconds without growth,
+the helper queues a close pass around the initial/focused position. This uses
+32-stud spacing within 256 studs at the original height and 64 studs above it,
+with at least one second to settle after each streaming request. An exhausted
+track route also tries this pass. Start/focus from the pit so this position is
+useful; it is not inferred from a named Suzuka corner.
+
+If 48 recovery visits in a row add nothing, Copy stops, restores rendering and
+saves the unfinished draft. Keep the source server open, move to the missing
+pit/straight section, press **Focus here**, then **Copy / Resume scan**. Captured
+objects and pending locations remain in the draft. This prevents an unproductive
+close pass from keeping the helper busy indefinitely. Recovery also survives
+pause/reload. Report includes recovery progress, idle areas and discovery reuse.
 
 `Scanning X / Y streamed objects` shows progress inside the current area. The
 captured count updates after that scan is merged into the backup snapshot.
@@ -192,10 +215,13 @@ seconds and `Config.DraftInterval` to 30 seconds. Automatic drafts are written
 between scan areas after that interval; pause, stop and finish also write one.
 Smaller batches yield more often. Pausing during a scan preserves the partial
 snapshot and revisits that area on resume.
-`Config.FocusRadius` defaults to 384, `Config.FocusStep` to 64 and
+`Config.FocusRadius` defaults to 384, `Config.FocusStep` to 32 and
 `Config.FineTrackScan` to true, which track mode requires. Keep `Config.GridStep`
 unchanged when resuming an existing draft; precise track/focus points use their
 own saved positions alongside that grid.
+`Config.StallAreas`, `Config.StallSeconds`, `Config.RecoveryRadius` and
+`Config.RecoverySettleTime` control the automatic recovery thresholds and close
+pass. Their defaults are 24, 60, 256 and 1 respectively.
 
 ## Supported build and verification limits
 
@@ -232,7 +258,7 @@ draft recovery after reload, mixed Model colors, default parts without Plus,
 pause/resume, late/rejected placement, durable pending requests, corrupted backups,
 catalog validation and loader modes with offline doubles. Actual Roblox placement,
 driving and the friend's save/reload still require an in-game session.
-All 116 behavioral checks passed locally on 2026-11-12, including large-scan
+All 126 behavioral checks passed locally on 2026-11-12, including large-scan
 pause/resume, cache invalidation, chunked checksums, FPS toggle/restoration and
 the panel's F8 binding. A regression with 400 additional catalog entries checks
 that unknown blocks use about one verified catalog comparison per sample even
@@ -243,7 +269,13 @@ native wedge/mesh catalog resolution, and detailed unresolved reports. Track mod
 checks cover broad-slab capture without a terrain sweep, explicit bounds mode,
 long diagonal roads, scaled Model footprints, connected sections that stream in
 and out around a bend, selection from the last visited position, and migration
-of legacy drafts without losing captured objects or manual focus. The local package was
+of legacy drafts without losing captured objects or manual focus.
+Discovery checks use 2,048 Parts with runtime folders and one complete Model:
+eight automatic scans avoid all repeated geometry sampling, followed by full
+final validation. Additional cases check exact centre visits with a tiny stream
+radius, overlapping copies and replacement references, rejection of source edits
+before replacing the completed backup, delayed buildings at another height,
+recovery reload and bounded stopping when nothing new is discovered. The local package was
 also opened and its four archived files compared with the current sources.
 
 The package script defaults to `Suzuka/jakarta-transfer.zip` in the parent source
@@ -251,12 +283,12 @@ workspace and verifies each archived file against its source.
 
 ## Publish the prepared helper
 
-From the `Claris Track Project` checkout, these commands include only the helper,
-its Suzuka documentation link and the backup ignore rule:
+From the `Claris Track Project` checkout, these commands include only the tracked
+helper files, excluding diagnostic screenshots and actual build backups:
 
 ```powershell
-git add -- .gitignore suzuka/README.md suzuka/build-transfer
-git commit --only -m "Add Jakarta build transfer backup and replay" -- .gitignore suzuka/README.md suzuka/build-transfer
+git add -u -- suzuka/build-transfer
+git commit --only -m "Speed up transfer discovery and recover pit scans" -- suzuka/build-transfer
 git push origin main
 ```
 

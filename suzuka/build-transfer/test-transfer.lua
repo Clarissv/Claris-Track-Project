@@ -462,9 +462,9 @@ check(api.Config.ScanMode=="track" and api.Report().captured==1,"Default track m
 local grassDraft=draftDocument()
 check(#grassDraft.scan.queue==1 and grassDraft.scan.queue[1].route,"Wide grass adds no automatic terrain sweep")
 local grassVisits=0
-onStream=function(position)grassVisits=grassVisits+1;assert(position.X==0 and position.Z==0,"Grass scan left the route anchor")end
-fails(api.Copy,"Backup is incomplete");onStream=nil
-check(grassVisits==1 and api.State=="stopped","Exhausted track route reports missing objects instead of claiming completion")
+onStream=function(position)grassVisits=grassVisits+1;assert(math.abs(position.X)<=256 and math.abs(position.Z)<=256,"Grass triggered a map-wide sweep")end
+fails(api.Copy,"No new objects");onStream=nil
+check(grassVisits<=49 and api.State=="stopped","Exhausted track route tries bounded nearby recovery and reports missing objects")
 game.JobId="source-bounds-grass";api=load();api.Config.ScanMode="bounds";api.Scan()
 local broadDraft=draftDocument();local reachesWideBounds=false
 for _,tile in ipairs(broadDraft.scan.queue)do
@@ -582,6 +582,102 @@ end
 api.Copy();countOverride=nil
 check(migrationVisit.X==128 and migrationVisit.Z==128 and api.State=="copied","Migrated manual focus retains priority")
 check(#backupDocument().records==3,"Migrated capture completes with all old and newly discovered objects")
+do
+-- The live problem had zero Part cache hits because runtime containers forced
+-- expensive re-sampling of thousands of already captured roots at each visit.
+clear();game.JobId="source-discovery-speed";workspace.StreamingEnabled=true;root.CFrame=cf(0,5,0)
+local populationCount=2048
+for i=1,populationCount do
+    local object=duplicateTemplate(block,"runtime-part-"..i,cf(i*0.125,0,0),v(4,4,4))
+    child(object,"Folder","RuntimeContainer");object.Parent=builds
+end
+duplicateTemplate(building,"guid-building",cf(40,0,0),2).Parent=builds
+local hiddenObject=duplicateTemplate(block,"guid-block",cf(80,0,0),v(2,2,2))
+countOverride=function()return populationCount+2 end;api=load();api.Scan()
+local sampleStart,yieldStart=api.Metrics.samples,api.Metrics.yields
+local visits,discoverySamples,discoveryYields=0
+onStream=function()
+    visits=visits+1
+    if visits==8 then
+        discoverySamples=api.Metrics.samples-sampleStart;discoveryYields=api.Metrics.yields-yieldStart
+        check(api.ScanProgress.full==false and api.ScanProgress.reused==populationCount+1,"Discovery reuses verified roots with runtime containers and complete Models")
+        hiddenObject.Parent=builds;onStream=nil
+    end
+end
+api.Copy();onStream=nil;countOverride=nil
+check(visits==8 and discoverySamples==0 and discoveryYields<35,"Repeated discovery avoids geometry checks and frame waits for known roots")
+check(api.Metrics.discoveryHits>=(populationCount+1)*8 and api.State=="copied","Incremental discovery captures new objects and finishes")
+check(api.ScanProgress.full and api.ScanProgress.sampled==populationCount+2 and api.Metrics.samples>sampleStart,"Completion revalidates the entire visible build")
+end
+do
+-- Reuse still counts known roots in the current snapshot, so a newly streamed
+-- coincident copy and replacement Instance references preserve multiplicity.
+clear();game.JobId="source-discovery-coincident";root.CFrame=cf(0,5,0)
+local original=duplicateTemplate(block,"guid-block",cf(10,0,10),v(4,4,4));original.Parent=builds
+local same=duplicateTemplate(block,"guid-block",original.CFrame,original.Size)
+local third=duplicateTemplate(building,"guid-building",cf(50,0,50),1)
+countOverride=function()return 3 end;local visits=0
+onStream=function()
+    visits=visits+1
+    if visits==1 then same.Parent=builds else
+        original.Parent=nil;same.Parent=nil
+        for i=1,2 do duplicateTemplate(block,"guid-block",original.CFrame,original.Size).Parent=builds end
+        third.Parent=builds;onStream=nil
+    end
+end
+api=load();api.Copy();onStream=nil;countOverride=nil
+check(visits==2 and #backupDocument().records==3,"Incremental source capture preserves coincident multiplicity across re-streaming")
+end
+do
+-- Exact centres work with a tiny streaming radius where offset grid points fail.
+clear();game.JobId="source-exact-centre";root.CFrame=cf(0,5,0)
+duplicateTemplate(block,"guid-block",cf(128,0,128),v(44,1,40)).Parent=builds
+local hiddenModel=duplicateTemplate(building,"guid-building",cf(128,0,128),1)
+countOverride=function()return 2 end;local visits=0
+onStream=function(position)
+    visits=visits+1
+    if (root.Position-hiddenModel:GetPivot().Position).Magnitude<=20 then hiddenModel.Parent=builds end
+end
+api=load();api.Copy();onStream=nil;countOverride=nil
+check(visits==1 and api.State=="copied","Exact object centre reaches roots missed by diagonal grid offsets")
+end
+do
+-- A quiet source is required even when discovery reuses snapshots. A change
+-- during the sweep is detected by final full validation before backup replacement.
+clear();game.JobId="source-discovery-edit";root.CFrame=cf(0,5,0)
+local original=duplicateTemplate(block,"guid-block",cf(),v(4,4,4));original.Parent=builds
+local hidden=duplicateTemplate(block,"guid-block",cf(50,0,0),v(4,4,4))
+countOverride=function()return 2 end;api=load();api.Scan();local priorBackup=files["jakarta-build-backup.json"]
+onStream=function()original.Color=rgb(0.1,0.2,0.3);hidden.Parent=builds;onStream=nil end
+fails(api.Copy,"Source object changed");countOverride=nil
+check(files["jakarta-build-backup.json"]==priorBackup and not api.Busy and root.CanCollide,"Failed final validation preserves the completed backup and restores character")
+end
+do
+-- An exhausted track route automatically scans the pit at two heights and
+-- allows delayed replication to settle. Recovery and captured records survive reload.
+clear();game.JobId="source-pit-recovery";root.CFrame=cf(0,5,0);wideGrass.Parent=builds
+local hidden=duplicateTemplate(building,"guid-building",cf(0,69,0),1)
+countOverride=function()return 2 end;api=load();api.Config.RecoveryRadius=64
+local recoveryPaused,waited=false,false
+onStream=function(position)
+    if position.Y==69 then
+        local ready=now+0.75
+        onWait=function()if now>=ready then hidden.Parent=builds;waited=true;onWait=nil end end
+    elseif api.Report().recovery and not recoveryPaused then
+        recoveryPaused=true;api.Pause();onStream=nil
+    end
+end
+api.Copy();check(api.State=="paused" and draftDocument().scan.recovery,"Automatic recovery persists when paused")
+local backupId=draftDocument().backupId;api=load();api.Config.RecoveryRadius=64
+onStream=function(position)
+    if position.Y==69 then
+        local ready=now+0.75
+        onWait=function()if now>=ready then hidden.Parent=builds;waited=true;onWait=nil end end
+    end
+end
+api.Copy();onStream=nil;onWait=nil;countOverride=nil
+check(waited and api.State=="copied" and backupDocument().backupId==backupId,"Resumed close pit recovery captures delayed building geometry at another height")
+end
 -- Loader URLs and execution modes actually select the correct entry point.
 local requestedModes={}
 function game:HttpGet(url)check(url=="https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/suzuka/build-transfer/transfer.lua","Loader URL");return "return function() end" end
