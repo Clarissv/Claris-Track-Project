@@ -74,10 +74,18 @@ on an error or disposed. Use **FPS mode: ON/OFF** to toggle it, including while
 the operation is running. Your build's materials, colors, textures, transparency
 and geometry are preserved.
 
+During movement, **NoClip is enabled by default** for your character's Parts.
+It temporarily disables their collision, anchors the root and teleports between
+scan points. Collision and anchoring are restored on pause, completion or error.
+Terrain, track and building collision settings are unchanged. Set
+`_G.JakartaTransfer.Config.NoClip = false` before resuming to disable it.
+
 The panel opens on the right, above the game's HUD. Press **F8** to pause when
 using the mouse is difficult. The scan yields between small batches and reuses
-unchanged plain Part snapshots; Models and Parts with descendants are always
-resampled to check streaming completeness. Unknown plain blocks use a verified
+unchanged Part, wedge and MeshPart snapshots. Leaf owner/placement metadata can
+be cached; mesh identity, geometry and appearance changes invalidate the cache.
+Models, nested containers, child meshes and texture descendants are resampled
+to check streaming completeness. Unknown plain blocks use a verified
 equivalent standard catalog template rather than comparing every catalog item
 again for each slab. Models are compared only against templates with matching
 root type and descendant counts; complete geometry/appearance checks still apply.
@@ -89,6 +97,31 @@ To replace an older running helper, run `_G.JakartaTransfer.Pause()` in the
 executor, wait for **Paused**, then run the updated Copy loader in the same
 source server. Keep the existing backup, draft and progress files; the updated
 helper reads the same formats and resumes the draft.
+
+## Focus the pit and starting straight
+
+If the captured count stops increasing while the area counter advances, pause
+with **F8**, walk to the pit or starting straight, press **Focus here (nearby
+buildings)**, then **Copy / Resume scan**. The focus queues 64-stud scan points
+within a 384-stud radius at your current height, ahead of the broad scan. It
+keeps the accumulated objects and persists the focus in the same draft. Repeat
+at another part of the pit, or another height for tall buildings, if needed.
+
+From the executor after pausing and moving there:
+
+```lua
+_G.JakartaTransfer.FocusHere()
+_G.JakartaTransfer.Copy()
+```
+
+An optional argument selects the radius, for example `FocusHere(512)`. Focus
+points are checked before other fine points and broad terrain areas. Remaining
+areas are retained, so focusing does not limit which objects belong in the backup.
+
+The helper also adds 64-stud scan points around small captured Parts and separates
+their height levels. This fills gaps that a 192-stud grid can leave when the live
+streaming radius shrinks. Large terrain footprints remain available as the broad
+scan. Automatic fine points reserve queue space for later bounds/focus areas.
 
 `Scanning X / Y streamed objects` shows progress inside the current area. The
 captured count updates after that scan is merged into the backup snapshot.
@@ -102,7 +135,9 @@ Keep the server's objects and all local files intact during recovery.
 
 If Copy stops before completion, keep the source server open. Walk to missing
 areas, press **Scan nearby**, then **Finish copy**. **Report** shows unresolved
-objects and reasons. Once the full root count has been captured, the helper
+objects, classes, positions and specific reasons. Native wedge/mesh roots with
+unknown instance GUIDs can resolve to complete matching catalog geometry. Once
+the full root count has been captured, the helper
 rechecks up to 20 unresolved positions and stops with a report if they still
 cannot be reproduced. It does not continue scanning the entire map for those
 objects or silently skip them. A source count change requires a fresh capture after editing
@@ -140,11 +175,15 @@ seconds and `Config.DraftInterval` to 30 seconds. Automatic drafts are written
 between scan areas after that interval; pause, stop and finish also write one.
 Smaller batches yield more often. Pausing during a scan preserves the partial
 snapshot and revisits that area on resume.
+`Config.FocusRadius` defaults to 384, `Config.FocusStep` to 64 and
+`Config.FineTrackScan` to true. Keep `Config.GridStep` unchanged when resuming an
+existing draft; fine/focus points work alongside that saved grid.
 
 ## Supported build and verification limits
 
 The helper reconstructs catalog Parts and complete catalog Models using the
-normal placement endpoint. Noncatalog/F3X roots, incomplete Models and per-child
+normal placement endpoint. Roots without a reproducible catalog equivalent,
+incomplete Models and per-child
 appearance/physics edits that catalog placement cannot reproduce stop completion
 and remain in the draft. Nothing is silently skipped. Models preserve mixed
 catalog colors by leaving unchanged appearance parameters unset.
@@ -175,11 +214,14 @@ draft recovery after reload, mixed Model colors, default parts without Plus,
 pause/resume, late/rejected placement, durable pending requests, corrupted backups,
 catalog validation and loader modes with offline doubles. Actual Roblox placement,
 driving and the friend's save/reload still require an in-game session.
-All 74 behavioral checks passed locally on 2026-11-12, including large-scan
+All 97 behavioral checks passed locally on 2026-11-12, including large-scan
 pause/resume, cache invalidation, chunked checksums, FPS toggle/restoration and
 the panel's F8 binding. A regression with 400 additional catalog entries checks
 that unknown blocks use about one verified catalog comparison per sample even
-when their runtime children prevent Part caching. The local package was
+when nested containers prevent Part caching. Additional checks exercise focus
+preservation after reload, missing objects at coarse-grid corners and different
+heights, noclip resets/new body parts/restoration, leaf metadata caching,
+native wedge/mesh catalog resolution, and detailed unresolved reports. The local package was
 also opened and its four archived files compared with the current sources.
 
 The package script defaults to `Suzuka/jakarta-transfer.zip` in the parent source

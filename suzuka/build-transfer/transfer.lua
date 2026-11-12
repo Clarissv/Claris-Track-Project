@@ -19,10 +19,11 @@ local config = {
     StreamTimeout = 5, SettleTime = 0.5, MaxTiles = 4096,
     PlacementTimeout = 12, PlacementInterval = 0.15, CatalogMap = {},
     FpsMode = true, BatchSize = 32, WorkBudget = 0.004, DraftInterval = 30,
+    NoClip = true, FocusRadius = 384, FocusStep = 64, FineTrackScan = true,
 }
 if old and old.Config and type(old.Config.FpsMode) == "boolean" then config.FpsMode = old.Config.FpsMode end
 for k, v in pairs(options.Config or {}) do assert(config[k] ~= nil, "Unknown setting: " .. k); config[k] = v end
-local api = {Config = config, State = "ready", Busy = false, Paused = false}
+local api = {Config = config, Version = "2026-11-12-focus", State = "ready", Busy = false, Paused = false}
 _G.JakartaTransfer = api
 local statusLabel, screen, follower, capture, catalog, pending, freshCapture, fpsButton, fpsSession, pauseKey
 api.Metrics = {yields = 0, samples = 0, cacheHits = 0, catalogChecks = 0}
@@ -147,6 +148,10 @@ local function settings()
     assert(finite(config.BatchSize) and config.BatchSize >= 1 and config.BatchSize <= 128 and config.BatchSize % 1 == 0, "BatchSize must be 1..128")
     assert(finite(config.WorkBudget) and config.WorkBudget >= 0.001 and config.WorkBudget <= 0.02, "WorkBudget must be 0.001..0.02")
     assert(finite(config.DraftInterval) and config.DraftInterval >= 5 and config.DraftInterval <= 120, "DraftInterval must be 5..120")
+    assert(type(config.NoClip) == "boolean", "NoClip must be true or false")
+    assert(type(config.FineTrackScan) == "boolean", "FineTrackScan must be true or false")
+    assert(finite(config.FocusRadius) and config.FocusRadius >= 64 and config.FocusRadius <= 1024, "FocusRadius must be 64..1024")
+    assert(finite(config.FocusStep) and config.FocusStep >= 32 and config.FocusStep <= 64, "FocusStep must be 32..64")
     assert(type(readfile) == "function" and type(writefile) == "function", "Your executor needs readfile and writefile")
 end
 local function checksum(raw)
@@ -192,8 +197,19 @@ end
 local function restoreCharacter()
     local held = follower; follower = nil
     if not held then return end
+    if held.stepConnection then held.stepConnection:Disconnect() end
+    for part, collision in pairs(held.collisions or {}) do pcall(function() part.CanCollide = collision end) end
+    api.NoClipActive = false
     if player.Character == held.character then pcall(function() held.character:PivotTo(held.start) end) end
     pcall(function() held.root.Anchored = held.anchored end)
+end
+local function noclipCharacter(held)
+    for _, part in ipairs(held.character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if held.collisions[part] == nil then held.collisions[part] = part.CanCollide end
+            part.CanCollide = false
+        end
+    end
 end
 local function visit(position)
     local character = player.Character
@@ -202,8 +218,15 @@ local function visit(position)
     assert(root and (not humanoid or humanoid.Health > 0 and not humanoid.SeatPart), "Stand outside your vehicle with a living character")
     assert(not follower or follower.character == character, "Character changed; pause and resume")
     if not follower then
-        follower = {character = character, root = root, start = character:GetPivot(), anchored = root.Anchored}
+        follower = {character = character, root = root, start = character:GetPivot(), anchored = root.Anchored, collisions = {}}
         root.Anchored = true
+        if config.NoClip then
+            noclipCharacter(follower); api.NoClipActive = true
+            local held = follower
+            pcall(function()
+                held.stepConnection = game:GetService("RunService").Stepped:Connect(function() noclipCharacter(held) end)
+            end)
+        end
     end
     character:PivotTo(CFrame.new(position + Vector3.new(0, 18, 0)))
     if workspace.StreamingEnabled then
@@ -430,13 +453,13 @@ local function resolve(object, image)
         end
         return nil, "No catalog block can reproduce this object's appearance/physics"
     end
-    -- Unknown instance GUIDs: require an exact Model structure, or an equivalent
-    -- plain block. Appearance is verified against the chosen template afterward.
+    -- Unknown instance GUIDs require compatible catalog geometry, including
+    -- shape/mesh identity. Verify appearance against the chosen template too.
     local found, foundOverrides
     for _, item in ipairs(catalog.geometry[geometryBucket(image)] or {}) do
         breathe()
         if api.Busy and api.Paused then return nil, "Scan paused during catalog lookup" end
-        local eligible = image.kind == "Model" or image.class == "Part" and image.parts[1].shape == "Block" and image.parts[1].mesh == "" and #image.visuals == 0
+        local eligible = image.kind == "Model" or image.kind == "Part" and #image.parts == 1 and #image.visuals == 0 and image.parts[1].mesh ~= "unsupported-mesh"
         if eligible then
             local overrides = inferOverrides(object, image, item)
             if overrides then
@@ -465,6 +488,21 @@ local function enqueue(position)
     capture.queued[key] = true
     capture.queue[#capture.queue + 1] = {x = x, z = z, y = position.Y}
 end
+local function seedFineTrack(image)
+    if not config.FineTrackScan or not image or image.kind ~= "Part" or type(image.size) ~= "table" then return end
+    if image.size[1] > 128 or image.size[3] > 128 or image.size[2] > 64 then return end
+    local x, z, y = math.floor(image.cf[1] / 64), math.floor(image.cf[3] / 64), math.floor(image.cf[2] / 32)
+    for dx = -1, 1 do for dz = -1, 1 do
+        breathe(0)
+        local key = "fine:auto:" .. (x + dx) .. ":" .. y .. ":" .. (z + dz)
+        -- Leave room for ordinary object bounds and a manual focus area.
+        if not capture.queued[key] and #capture.queue < config.MaxTiles - 256 then
+            local px, pz = (x + dx + 0.5) * 64, (z + dz + 0.5) * 64
+            capture.queue[#capture.queue + 1] = {x = math.floor(px / capture.step), z = math.floor(pz / capture.step), y = image.cf[2], px = px, pz = pz, key = key, fine = true}
+            capture.queued[key] = true
+        end
+    end end
+end
 local function expand(object)
     if not object:IsA("BasePart") and not object:IsA("Model") then return end
     local cf, size
@@ -479,31 +517,43 @@ local function expand(object)
         end
     end
 end
-local cacheProperties = {"Name", "CFrame", "Size", "Shape", "Color", "Material", "MaterialVariant", "Transparency", "Reflectance", "CanCollide", "Anchored", "CustomPhysicalProperties"}
+local cacheProperties = {"Name", "CFrame", "Size", "Color", "Material", "MaterialVariant", "Transparency", "Reflectance", "CanCollide", "Anchored", "CustomPhysicalProperties"}
+local metadataLeaves = {BoolValue = true, StringValue = true, NumberValue = true, IntValue = true, ObjectValue = true, ClickDetector = true, SelectionBox = true, Highlight = true}
+local function cacheablePart(object)
+    if object.ClassName ~= "Part" and object.ClassName ~= "WedgePart" and object.ClassName ~= "CornerWedgePart" and object.ClassName ~= "MeshPart" then return false end
+    for _, child in ipairs(object:GetChildren()) do
+        if not metadataLeaves[child.ClassName] or #child:GetChildren() > 0 then return false end
+    end
+    return true
+end
 local function captureObject(object)
-    -- Plain immutable-value Part properties are cheap to compare. Models and
-    -- Parts with descendants are always resampled so partial streaming and
-    -- per-child edits cannot be hidden by the cache.
-    local plain = object.ClassName == "Part" and #object:GetChildren() == 0
+    -- Compare immutable-value geometry/appearance properties, including mesh
+    -- identity. Leaf runtime metadata does not alter sampled geometry. Models,
+    -- meshes/decals stored as children and nested containers are resampled.
+    local plain = cacheablePart(object)
+    local shape = object:IsA("Part") and object.Shape or nil
+    local meshId = object:IsA("MeshPart") and object.MeshId or nil
+    local textureId = object:IsA("MeshPart") and object.TextureID or nil
     local cached = plain and partCache[object]
-    if cached and cached.mapping == config.CatalogMap[object.Name] then
+    if cached and cached.mapping == config.CatalogMap[object.Name] and cached.shape == shape and cached.meshId == meshId and cached.textureId == textureId then
         local unchanged = true
         for _, property in ipairs(cacheProperties) do if object[property] ~= cached.values[property] then unchanged = false; break end end
         if unchanged then api.Metrics.cacheHits = api.Metrics.cacheHits + 1; return cached.record end
     end
     api.Metrics.samples = api.Metrics.samples + 1
-    local record = {sourceName = object.Name, sourceKey = rawKey(object)}
+    local record = {sourceName = object.Name, sourceKey = rawKey(object), class = object.ClassName}
     local ok, image = pcall(sample, object)
     if ok then
         record.image = image
         local item, overrides, reason = resolve(object, image)
         if item and overrides then record.catalogName, record.sourceGuid, record.overrides = item.name, item.guid, overrides
-        else record.error = reason or "Unrecognized catalog item" end
+        else record.error = reason or (type(overrides) == "string" and overrides) or "Unrecognized catalog item" end
     else record.error = tostring(image) end
     expand(object)
+    seedFineTrack(record.image)
     if plain and not record.error then
         local values = {}; for _, property in ipairs(cacheProperties) do values[property] = object[property] end
-        partCache[object] = {record = record, values = values, mapping = config.CatalogMap[object.Name]}
+        partCache[object] = {record = record, values = values, shape = shape, meshId = meshId, textureId = textureId, mapping = config.CatalogMap[object.Name]}
     end
     return record
 end
@@ -595,18 +645,18 @@ local function captureReport(includeExamples)
             breathe()
             for i = 1, group.unresolved or 0 do
                 local record = group.errors[i]
-                if #errors < 20 then errors[#errors + 1] = {name = record.sourceName, reason = record.error} end
+                if #errors < 20 then errors[#errors + 1] = {name = record.sourceName, class = record.class or record.image and record.image.class, reason = record.error, position = record.image and {record.image.cf[1], record.image.cf[2], record.image.cf[3]}} end
             end
         end
     end
-    return {captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, metrics = api.Metrics}
+    return {version = api.Version, captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, focus = capture.focus, scan = api.ScanProgress, noClip = api.NoClipActive == true, metrics = api.Metrics}
 end
 local function copyDocument(complete)
     return {
         format = "jakarta-build-v1", backupId = capture.id, complete = complete,
         source = {placeId = game.PlaceId, jobId = capture.jobId, userId = player.UserId, createdAt = capture.createdAt, expectedCount = capture.expected},
         records = capturedRecords(), report = captureReport(),
-        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile} or nil,
+        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile, focus = capture.focus} or nil,
     }
 end
 local function saveDraft()
@@ -627,11 +677,21 @@ local function restoreDraft()
     assert(scan.step == config.GridStep, "Keep the draft's GridStep unchanged, or use NewCopy")
     assert(type(scan.queue) == "table" and #scan.queue <= config.MaxTiles and finite(scan.nextTile) and scan.nextTile % 1 == 0 and scan.nextTile >= 1 and scan.nextTile <= #scan.queue + 1, "Invalid draft scan")
     assert(type(document.backupId) == "string" and finite(document.source.expectedCount) and document.source.expectedCount >= 0 and type(document.records) == "table", "Invalid draft metadata")
-    local recovered = {id = document.backupId, jobId = game.JobId, createdAt = document.source.createdAt, expected = document.source.expectedCount, step = scan.step, queue = scan.queue, nextTile = scan.nextTile, groups = {}, queued = {}}
+    local recovered = {id = document.backupId, jobId = game.JobId, createdAt = document.source.createdAt, expected = document.source.expectedCount, step = scan.step, queue = scan.queue, nextTile = scan.nextTile, focus = scan.focus, groups = {}, queued = {}}
+    if recovered.focus then
+        assert(type(recovered.focus) == "table" and #recovered.focus == 3, "Invalid draft focus")
+        for _, n in ipairs(recovered.focus) do assert(finite(n), "Invalid draft focus coordinate") end
+    else
+        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if root then recovered.focus = vec(root.Position) end
+    end
     for _, tile in ipairs(scan.queue) do
         breathe()
         assert(finite(tile.x) and tile.x % 1 == 0 and finite(tile.z) and tile.z % 1 == 0 and finite(tile.y), "Invalid draft scan position")
-        recovered.queued[tile.x .. ":" .. tile.z] = true
+        if tile.fine then
+            assert(type(tile.key) == "string" and finite(tile.px) and finite(tile.pz), "Invalid fine scan point")
+        end
+        recovered.queued[tile.key or (tile.x .. ":" .. tile.z)] = true
     end
     for _, record in ipairs(document.records) do
         breathe()
@@ -648,6 +708,7 @@ local function restoreDraft()
     assert(serverCount() == recovered.expected, "Source object count changed since the draft; use NewCopy after editing stops")
     capture = recovered
     for _, group in pairs(capture.groups) do breathe(); updateGroup(group) end
+    for _, record in ipairs(document.records) do breathe(); seedFineTrack(record.image) end
     status("Resumed local draft from this source server")
     return true
 end
@@ -667,6 +728,7 @@ local function startCapture()
     end
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     assert(root, "Spawn your character first")
+    capture.focus = vec(root.Position)
     enqueue(root.Position)
     captureNearby(); saveDraft()
 end
@@ -692,6 +754,48 @@ function api.Scan()
         status(string.format("Captured %d / %d; unresolved=%d. Draft saved.", report.captured, report.expected, report.unresolved))
         return report
     end)
+end
+function api.FocusHere(radius)
+    return run("copying", function()
+        if not capture then startCapture() end
+        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        assert(root, "Spawn your character first")
+        radius = radius or config.FocusRadius
+        assert(finite(radius) and radius >= 64 and radius <= 1024, "Focus radius must be 64..1024")
+        local position, step, points = root.Position, config.FocusStep, {}
+        local pass = http:GenerateGUID(false)
+        for x = math.floor((position.X - radius) / step), math.floor((position.X + radius) / step) do
+            for z = math.floor((position.Z - radius) / step), math.floor((position.Z + radius) / step) do
+                breathe(0)
+                local px, pz = (x + 0.5) * step, (z + 0.5) * step
+                if (px - position.X) ^ 2 + (pz - position.Z) ^ 2 <= radius ^ 2 then
+                    points[#points + 1] = {x = math.floor(px / capture.step), z = math.floor(pz / capture.step), y = position.Y, px = px, pz = pz, fine = true, focused = true, key = "fine:" .. pass .. ":" .. x .. ":" .. z}
+                end
+            end
+        end
+        assert(#capture.queue + #points <= config.MaxTiles, "Focus area exceeds MaxTiles; use a smaller focus radius")
+        capture.focus = vec(position)
+        for _, point in ipairs(points) do capture.queue[#capture.queue + 1] = point; capture.queued[point.key] = true end
+        saveDraft()
+        api.State = "ready"
+        status(string.format("Focus here: %d close scan points queued; %d / %d captured. Press Copy / Resume.", #points, capture.total or 0, capture.expected))
+        return #points
+    end)
+end
+local function nextScanTile()
+    local best, rank, distance
+    for index = capture.nextTile, #capture.queue do
+        breathe(0)
+        if api.Paused then return end
+        local tile = capture.queue[index]
+        local priority = tile.focused and 0 or tile.fine and 1 or 2
+        local px, pz = tile.px or (tile.x + 0.5) * capture.step, tile.pz or (tile.z + 0.5) * capture.step
+        local squared = capture.focus and ((px - capture.focus[1]) ^ 2 + (pz - capture.focus[3]) ^ 2) or index
+        if not best or priority < rank or priority == rank and squared < distance then best, rank, distance = index, priority, squared end
+    end
+    if not best then return end
+    capture.queue[capture.nextTile], capture.queue[best] = capture.queue[best], capture.queue[capture.nextTile]
+    return capture.queue[capture.nextTile]
 end
 local function finishCopy()
     assert(capture, "Run Copy first")
@@ -756,9 +860,9 @@ function api.Copy()
                 if api.Paused then break end
                 return finishCopy()
             end
-            local tile = capture.queue[capture.nextTile]
+            local tile = nextScanTile()
             if not tile then break end
-            visit(Vector3.new((tile.x + 0.5) * capture.step, tile.y, (tile.z + 0.5) * capture.step))
+            visit(Vector3.new(tile.px or (tile.x + 0.5) * capture.step, tile.y, tile.pz or (tile.z + 0.5) * capture.step))
             if api.Paused then break end
             if captureNearby() then capture.nextTile = capture.nextTile + 1 end
             if os.clock() - (capture.lastDraft or 0) >= config.DraftInterval then saveDraft() end
@@ -981,7 +1085,7 @@ if not options.Headless then
     screen.DisplayOrder = 10000
     screen.Parent = player:WaitForChild("PlayerGui")
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.fromOffset(370, 350); panel.Position = UDim2.new(1, -386, 0.5, -175)
+    panel.Size = UDim2.fromOffset(370, 396); panel.Position = UDim2.new(1, -386, 0.5, -198)
     panel.Active = true
     panel.BackgroundColor3 = Color3.fromRGB(25, 29, 38); panel.Parent = screen
     local title = Instance.new("TextLabel")
@@ -1006,10 +1110,12 @@ if not options.Headless then
     button("Finish copy", 190, 180, api.FinishCopy)
     button("Pause", 10, 226, api.Pause)
     button("Report", 190, 226, api.Report)
-    fpsButton = button("FPS mode: " .. (config.FpsMode and "ON" or "OFF"), 10, 272, function() api.SetFPS(not config.FpsMode) end)
+    local focusButton = button("Focus here (nearby buildings)", 10, 272, api.FocusHere)
+    focusButton.Size = UDim2.fromOffset(350, 38)
+    fpsButton = button("FPS mode: " .. (config.FpsMode and "ON" or "OFF"), 10, 318, function() api.SetFPS(not config.FpsMode) end)
     fpsButton.Size = UDim2.fromOffset(350, 38)
     local hint = Instance.new("TextLabel")
-    hint.Size = UDim2.new(1, -20, 0, 24); hint.Position = UDim2.fromOffset(10, 318)
+    hint.Size = UDim2.new(1, -20, 0, 24); hint.Position = UDim2.fromOffset(10, 364)
     hint.BackgroundTransparency = 1; hint.Text = "F8: Pause  |  3D view returns when stopped"
     hint.TextColor3 = Color3.fromRGB(215, 224, 240); hint.TextSize = 12; hint.Parent = panel
     pcall(function()

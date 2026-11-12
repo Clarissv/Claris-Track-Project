@@ -63,7 +63,7 @@ end
 local function instance(class)
     return setmetatable({props={ClassName=class,Name=class,CFrame=cf(),Size=v(1,1,1),Shape=Enum.PartType.Block,Color=rgb(1,1,1),Material=Enum.Material.Plastic,MaterialVariant="",Transparency=0,Reflectance=0,CanCollide=true,Anchored=true,Scale=1,ChildAdded=signal(),Activated=signal()},children={},attributes={}},im)
 end
-function methods:IsA(class)return self.ClassName==class or class=="BasePart" and (self.ClassName=="Part" or self.ClassName=="MeshPart")end
+function methods:IsA(class)return self.ClassName==class or class=="BasePart" and (self.ClassName=="Part" or self.ClassName=="MeshPart" or self.ClassName=="WedgePart" or self.ClassName=="CornerWedgePart")end
 function methods:GetChildren()local out={};for _,c in ipairs(self.children)do out[#out+1]=c end;return out end
 function methods:GetDescendants()local out={};for _,c in ipairs(self.children)do out[#out+1]=c;for _,d in ipairs(c:GetDescendants())do out[#out+1]=d end end;return out end
 function methods:FindFirstChild(name,recursive)for _,c in ipairs(recursive and self:GetDescendants() or self.children)do if c.Name==name then return c end end end
@@ -115,7 +115,7 @@ local failWrite
 writefile=function(path,raw)assert(path~=failWrite,"Simulated disk failure");files[path]=raw end
 readfile=function(path)return assert(files[path],"Missing file "..path)end
 isfile=function(path)return files[path]~=nil end
-local runService={enabled=true,calls={}}
+local runService={enabled=true,calls={},Stepped=signal()}
 function runService:Set3dRenderingEnabled(enabled)
     if self.failDisable and not enabled then error("3D control unavailable")end
     self.enabled=enabled;self.calls[#self.calls+1]=enabled
@@ -277,7 +277,7 @@ local defaults=backupDocument();check(next(defaults.records[1].overrides)==nil,"
 clear();game.JobId="friend-defaults";api=load();before=sends;api.Paste()
 check(sends==before+1 and api.State=="pasted","Default catalog Part transfers without Plus")
 -- Reproduce the live slowdown: GUID-named Parts against hundreds of catalog
--- entries. Unrelated runtime children keep the plain-Part cache disabled, so
+-- entries. Nested containers keep the Part cache disabled, so
 -- this checks the catalog lookup itself rather than relying on cache hits.
 local extraTemplates={}
 for i=1,400 do
@@ -287,7 +287,7 @@ end
 local premium=child(templates,"Part","premium-guid");entries[#entries+1]={name="AAA Premium block",guid=premium.Name,plus=true}
 clear();game.JobId="source-catalog-speed";workspace.StreamingEnabled=false
 for i=1,128 do
-    local p=duplicateTemplate(block,"unknown-guid-"..i,cf(i*3,5,5),v(2,2,2));child(p,"BoolValue","RuntimeMarker");p.Parent=builds
+    local p=duplicateTemplate(block,"unknown-guid-"..i,cf(i*3,5,5),v(2,2,2));child(p,"Folder","RuntimeContainer");p.Parent=builds
 end
 api=load();api.Scan()
 check(api.Metrics.samples==256 and api.Metrics.cacheHits==0,"Catalog regression resamples roots with runtime children")
@@ -370,6 +370,86 @@ check(keyboardPaused and api.State=="paused" and runService.enabled,"F8 can paus
 fpsControl.Activated:Fire();check(api.Config.FpsMode==false,"Panel FPS button remains callable after pause")
 api.Dispose();api.Paused=false;inputs.InputBegan:Fire({KeyCode=Enum.KeyCode.F8})
 check(not api.Paused and not gui:FindFirstChild("JakartaTransferPanel"),"Dispose removes panel and pause hotkey")
+-- Focused scans preserve accumulated objects and revisit nearby regions at a
+-- finer spacing, ahead of a remote terrain footprint. Focus survives reload.
+clear();game.JobId="source-focus";workspace.StreamingEnabled=true;root.CFrame=cf(0,5,0)
+local known=duplicateTemplate(block,"guid-block",cf(3000,5,3000),v(400,2,400));known.Parent=builds
+local missingNearby=duplicateTemplate(block,"guid-block",cf(192,5,192),v(4,4,4))
+countOverride=function()return 2 end;api=load();api.Scan();local capturedBefore=api.Report().captured
+root.CFrame=cf(192,5,192);local focusPoints=api.FocusHere(128)
+check(focusPoints>0 and api.Report().captured==capturedBefore,"Focus keeps the existing draft records")
+local focusDraft=http:JSONDecode(http:JSONDecode(files["jakarta-build-draft.json"]).payload)
+check(focusDraft.scan.focus[1]==192 and focusDraft.scan.queue[#focusDraft.scan.queue].fine,"Fine scan points persisted alongside old queue")
+local passiveLimb=child(player.Character,"Part","PassiveLimb");passiveLimb.CanCollide=false
+local newLimb,firstFocusedPosition
+api=load();onStream=function(position)
+    firstFocusedPosition=position
+    check((position-missingNearby.Position).Magnitude<=64,"Fine scan reaches nearby objects missed by coarse grid")
+    check(api.NoClipActive and root.CanCollide==false and root.Anchored,"Transfer disables character collision while moving")
+    newLimb=child(player.Character,"Part","NewLimb")
+    root.CanCollide=true;runService.Stepped:Fire()
+    check(root.CanCollide==false and newLimb.CanCollide==false,"Noclip handles collision resets and new character parts")
+    check(known.CanCollide==true,"Noclip leaves build collision intact")
+    missingNearby.Parent=builds;api.Pause();onStream=nil
+end
+api.Copy()
+check(firstFocusedPosition and api.State=="paused" and api.Report().focus[1]==192,"Focused priority survives helper reload")
+check(root.CanCollide==true and passiveLimb.CanCollide==false and newLimb.CanCollide==true and not api.NoClipActive,"Pause restores every original character collision value")
+root.CanCollide=true;runService.Stepped:Fire();check(root.CanCollide==true,"Pause disconnects noclip enforcement")
+api=load();api.Copy();countOverride=nil
+check(api.State=="copied" and #backupDocument().records==2,"Focused resume captures missing objects without losing distant ones")
+check(root.CanCollide and newLimb.CanCollide and not api.NoClipActive,"Completion restores character collision")
+passiveLimb.Parent=nil;newLimb.Parent=nil
+-- Automatically fill gaps around small track parts at both crossover heights.
+-- A tiny object near a 192-stud cell corner can be outside a 64-stud stream
+-- radius from every coarse centre, but is reached by the fine stencil.
+clear();game.JobId="source-fine-track";workspace.StreamingEnabled=true;root.CFrame=cf(0,5,0)
+duplicateTemplate(block,"guid-block",cf(128,0,128),v(44,1,40)).Parent=builds
+duplicateTemplate(block,"guid-block",cf(128,128,128),v(44,1,40)).Parent=builds
+local gapObject=duplicateTemplate(block,"guid-block",cf(192,128,192),v(2,2,2))
+countOverride=function()return 3 end;local foundFineGap=false;local fineVisits=0
+onStream=function(position)
+    fineVisits=fineVisits+1
+    if (position-gapObject.Position).Magnitude<=64 then gapObject.Parent=builds;foundFineGap=true;onStream=nil end
+end
+api=load();api.Copy();countOverride=nil;onStream=nil
+check(foundFineGap and fineVisits<=18 and api.State=="copied","Automatic fine points capture gaps at the correct height")
+check(#backupDocument().records==3,"Fine track scan preserves authoritative object count")
+-- Noclip can be disabled and error cleanup restores collision too.
+clear();game.JobId="source-no-noclip";duplicateTemplate(block,"guid-block",cf(),v(4,4,4)).Parent=builds
+countOverride=function()return 2 end;api=load();api.Config.NoClip=false;local sawNoClipOff=false
+onStream=function()sawNoClipOff=root.CanCollide and not api.NoClipActive;api.Pause();onStream=nil end
+api.Copy();countOverride=nil
+check(sawNoClipOff and root.CanCollide,"NoClip=false leaves character collision enabled")
+game.JobId="friend-noclip-error";clear();files["jakarta-build-import-progress.json"]=nil;reject=true;api=load()
+fails(api.Paste,"unconfirmed");reject=false
+check(root.CanCollide and not api.NoClipActive,"Failed placement restores character collision")
+-- Harmless leaf metadata can be cached; mesh identity changes invalidate it.
+clear();game.JobId="source-extended-cache";workspace.StreamingEnabled=false
+local wedgeTemplate=child(templates,"WedgePart","guid-wedge")
+local meshTemplate=child(templates,"MeshPart","guid-mesh");meshTemplate.MeshId="rbxassetid://123";meshTemplate.TextureID="rbxassetid://456"
+local meshTemplateNew=child(templates,"MeshPart","guid-mesh-new");meshTemplateNew.MeshId=meshTemplate.MeshId;meshTemplateNew.TextureID="rbxassetid://789"
+entries[#entries+1]={name="Catalog wedge",guid=wedgeTemplate.Name}
+entries[#entries+1]={name="Catalog mesh",guid=meshTemplate.Name}
+entries[#entries+1]={name="Catalog mesh new",guid=meshTemplateNew.Name}
+local w=duplicateTemplate(wedgeTemplate,"unknown-wedge",cf(10,5,0),v(4,4,4));child(w,"BoolValue","Placed");w.Parent=builds
+local m=duplicateTemplate(meshTemplate,"unknown-mesh",cf(20,5,0),v(4,4,4));child(m,"StringValue","Owner");m.Parent=builds
+api=load();api.Scan()
+check(api.Metrics.samples==2 and api.Metrics.cacheHits==2,"Mesh/wedge roots with leaf metadata reuse verified snapshots")
+local meshSamples=api.Metrics.samples;m.TextureID=meshTemplateNew.TextureID;api.Scan()
+check(api.Metrics.samples==meshSamples+1,"Mesh texture change invalidates cached geometry")
+api.NewCopy();local nativeBackup=backupDocument()
+check(nativeBackup.complete and #nativeBackup.records==2,"Unknown wedges and meshes resolve to exact catalog geometry")
+local capturedMesh
+for _,record in ipairs(nativeBackup.records)do if record.image.class=="MeshPart"then capturedMesh=record.image.parts[1].mesh end end
+check(capturedMesh and capturedMesh:find("789",1,true),"Changed mesh texture preserved in fresh capture")
+local ownerMarker=m:FindFirstChild("Owner");child(ownerMarker,"Part","NestedGeometry")
+local beforeNested=api.Metrics.samples;api.Scan()
+check(api.Metrics.samples==beforeNested+1,"New geometry beneath a metadata leaf invalidates the cache")
+fails(api.NewCopy,"unresolved")
+local detailed=api.Report().examples[1]
+check(detailed.class=="MeshPart" and detailed.position[1]==20 and detailed.reason~="Unrecognized catalog item","Unresolved report preserves class, position and specific failure")
+for i=1,3 do table.remove(entries)end;wedgeTemplate.Parent=nil;meshTemplate.Parent=nil;meshTemplateNew.Parent=nil
 -- Loader URLs and execution modes actually select the correct entry point.
 local requestedModes={}
 function game:HttpGet(url)check(url=="https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/suzuka/build-transfer/transfer.lua","Loader URL");return "return function() end" end
