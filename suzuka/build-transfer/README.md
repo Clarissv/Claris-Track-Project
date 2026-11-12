@@ -77,7 +77,11 @@ and geometry are preserved.
 The panel opens on the right, above the game's HUD. Press **F8** to pause when
 using the mouse is difficult. The scan yields between small batches and reuses
 unchanged plain Part snapshots; Models and Parts with descendants are always
-resampled to check streaming completeness. File checksums also yield between
+resampled to check streaming completeness. Unknown plain blocks use a verified
+equivalent standard catalog template rather than comparing every catalog item
+again for each slab. Models are compared only against templates with matching
+root type and descendant counts; complete geometry/appearance checks still apply.
+File checksums also yield between
 chunks. Large native JSON encoding/decoding operations can still cause a brief
 stutter; actual in-game FPS improvement has not been measured.
 
@@ -86,6 +90,11 @@ executor, wait for **Paused**, then run the updated Copy loader in the same
 source server. Keep the existing backup, draft and progress files; the updated
 helper reads the same formats and resumes the draft.
 
+`Scanning X / Y streamed objects` shows progress inside the current area. The
+captured count updates after that scan is merged into the backup snapshot.
+`Writing local draft` identifies the filesystem step. A message such as
+`Resumed local draft` alone is not a completion message.
+
 Use **Pause**, then the corresponding **Copy / Resume scan** or **Paste / Resume**
 button. Reloading the helper resumes an unfinished draft in the same source
 server. Import progress survives helper reloads in the same destination server.
@@ -93,7 +102,10 @@ Keep the server's objects and all local files intact during recovery.
 
 If Copy stops before completion, keep the source server open. Walk to missing
 areas, press **Scan nearby**, then **Finish copy**. **Report** shows unresolved
-objects and reasons. A source count change requires a fresh capture after editing
+objects and reasons. Once the full root count has been captured, the helper
+rechecks up to 20 unresolved positions and stops with a report if they still
+cannot be reproduced. It does not continue scanning the entire map for those
+objects or silently skip them. A source count change requires a fresh capture after editing
 stops:
 
 ```lua
@@ -163,9 +175,11 @@ draft recovery after reload, mixed Model colors, default parts without Plus,
 pause/resume, late/rejected placement, durable pending requests, corrupted backups,
 catalog validation and loader modes with offline doubles. Actual Roblox placement,
 driving and the friend's save/reload still require an in-game session.
-All 69 behavioral checks passed locally on 2026-11-12, including large-scan
+All 74 behavioral checks passed locally on 2026-11-12, including large-scan
 pause/resume, cache invalidation, chunked checksums, FPS toggle/restoration and
-the panel's F8 binding. The local package was
+the panel's F8 binding. A regression with 400 additional catalog entries checks
+that unknown blocks use about one verified catalog comparison per sample even
+when their runtime children prevent Part caching. The local package was
 also opened and its four archived files compared with the current sources.
 
 The package script defaults to `Suzuka/jakarta-transfer.zip` in the parent source

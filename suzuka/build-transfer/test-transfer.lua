@@ -276,10 +276,34 @@ player.attributes.BT_SubPermanent=false;api=load();api.Copy()
 local defaults=backupDocument();check(next(defaults.records[1].overrides)==nil,"Default Part has no appearance overrides")
 clear();game.JobId="friend-defaults";api=load();before=sends;api.Paste()
 check(sends==before+1 and api.State=="pasted","Default catalog Part transfers without Plus")
+-- Reproduce the live slowdown: GUID-named Parts against hundreds of catalog
+-- entries. Unrelated runtime children keep the plain-Part cache disabled, so
+-- this checks the catalog lookup itself rather than relying on cache hits.
+local extraTemplates={}
+for i=1,400 do
+    local template=child(templates,"Part","extra-guid-"..i);extraTemplates[#extraTemplates+1]=template
+    entries[#entries+1]={name="Extra catalog item "..i,guid=template.Name,plus=i%2==0}
+end
+local premium=child(templates,"Part","premium-guid");entries[#entries+1]={name="AAA Premium block",guid=premium.Name,plus=true}
+clear();game.JobId="source-catalog-speed";workspace.StreamingEnabled=false
+for i=1,128 do
+    local p=duplicateTemplate(block,"unknown-guid-"..i,cf(i*3,5,5),v(2,2,2));child(p,"BoolValue","RuntimeMarker");p.Parent=builds
+end
+api=load();api.Scan()
+check(api.Metrics.samples==256 and api.Metrics.cacheHits==0,"Catalog regression resamples roots with runtime children")
+check(api.Metrics.catalogChecks<=api.Metrics.samples+4,"Unknown blocks use constant verified catalog lookup across 400 entries")
+check(api.Metrics.yields<200,"Catalog lookup avoids hundreds of frame waits per object")
+api.FinishCopy();local fast=backupDocument()
+check(fast.complete and #fast.records==128 and fast.records[1].catalogName=="Block","Fast lookup chooses equivalent standard catalog template")
+for i=1,401 do table.remove(entries)end;premium.Parent=nil
+for _,template in ipairs(extraTemplates)do template.Parent=nil end
 -- A missing explicit mapping cannot fall back silently to the object's name.
 game.JobId="source-missing-map";clear();duplicateTemplate(block,"guid-block",cf(),v(4,4,4)).Parent=builds
 api=load();api.Config.CatalogMap["guid-block"]="Missing";before=files["jakarta-build-backup.json"]
+local streamedAreas=0;workspace.StreamingEnabled=true;onStream=function()streamedAreas=streamedAreas+1 end
 fails(api.Copy,"unresolved")
+onStream=nil;workspace.StreamingEnabled=false
+check(streamedAreas==1,"Fully captured unresolved build stops after targeted recheck")
 check(files["jakarta-build-backup.json"]==before and api.Report().unresolved==1,"Bad catalog mapping preserves last complete backup")
 -- Model transparency inference ignores fully invisible helper parts.
 local hidden=child(building,"Part","Invisible");hidden.Size=v(1,1,1);hidden.Transparency=1

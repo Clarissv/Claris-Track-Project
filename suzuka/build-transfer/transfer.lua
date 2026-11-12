@@ -25,7 +25,7 @@ for k, v in pairs(options.Config or {}) do assert(config[k] ~= nil, "Unknown set
 local api = {Config = config, State = "ready", Busy = false, Paused = false}
 _G.JakartaTransfer = api
 local statusLabel, screen, follower, capture, catalog, pending, freshCapture, fpsButton, fpsSession, pauseKey
-api.Metrics = {yields = 0, samples = 0, cacheHits = 0}
+api.Metrics = {yields = 0, samples = 0, cacheHits = 0, catalogChecks = 0}
 local workUnits, lastYield = 0, os.clock()
 local function breathe(units)
     workUnits = workUnits + (units or 1)
@@ -291,12 +291,19 @@ local function imageKey(image)
 end
 local partCache = setmetatable({}, {__mode = "k"})
 local recordKeys = setmetatable({}, {__mode = "k"})
+local function plainBlock(image)
+    return image.kind == "Part" and image.class == "Part" and #image.parts == 1 and #image.visuals == 0 and image.parts[1].shape == "Block" and image.parts[1].mesh == ""
+end
+local function geometryBucket(image)
+    return image.kind .. ":" .. image.class .. ":" .. #image.parts .. ":" .. #image.visuals
+end
 local function loadCatalog()
+    status("Loading build catalog...")
     local entries = query("GetCatalogManifest")
     local folder = storage:FindFirstChild("PlacementObject")
     folder = folder and folder:FindFirstChild("Object")
     assert(type(entries) == "table" and folder, "Build catalog is unavailable")
-    local result = {entries = {}, names = {}, guids = {}}
+    local result = {entries = {}, names = {}, guids = {}, blocks = {}, blockHints = {}, geometry = {}}
     for _, entry in ipairs(entries) do
         breathe()
         if type(entry) == "table" and type(entry.name) == "string" and type(entry.guid) == "string" then
@@ -307,12 +314,21 @@ local function loadCatalog()
                     local item = {name = entry.name, guid = entry.guid, plus = entry.plus == true, template = template, image = image}
                     assert(not result.names[item.name] and not result.guids[item.guid], "Ambiguous catalog identity: " .. item.name)
                     result.entries[#result.entries + 1] = item; result.names[item.name] = item; result.guids[item.guid] = item
+                    if plainBlock(image) then result.blocks[#result.blocks + 1] = item end
+                    local key = geometryBucket(image)
+                    result.geometry[key] = result.geometry[key] or {}
+                    result.geometry[key][#result.geometry[key] + 1] = item
                 end
             end
         end
     end
     assert(#result.entries > 0, "No usable catalog items")
     table.sort(result.entries, function(a, b) return a.name < b.name end)
+    table.sort(result.blocks, function(a, b)
+        if a.plus ~= b.plus then return not a.plus end
+        return a.name < b.name
+    end)
+    for _, entriesInBucket in pairs(result.geometry) do table.sort(entriesInBucket, function(a, b) return a.name < b.name end) end
     catalog = result
     partCache = setmetatable({}, {__mode = "k"})
     return result
@@ -336,6 +352,7 @@ local function predict(template, overrides)
     return result
 end
 local function inferOverrides(object, image, item)
+    api.Metrics.catalogChecks = api.Metrics.catalogChecks + 1
     if not geometrySame(image, item.image, 0.002) then return nil, "Model/mesh contents do not match the complete catalog template" end
     local overrides = {}
     if image.kind == "Part" then
@@ -394,11 +411,31 @@ local function resolve(object, image)
         if not direct and type(value) == "string" then direct = catalog.names[value] or catalog.guids[value] end
     end
     if direct then local overrides, reason = inferOverrides(object, image, direct); return direct, overrides, reason end
+    if plainBlock(image) then
+        -- Equivalent plain blocks can use the first valid standard template.
+        -- Colors/materials/sizes are overrides, so do not walk the entire catalog
+        -- for every GUID-named track slab. The hint is verified for every object.
+        local p = image.parts[1]
+        local key = numberKey(p.reflectance) .. ":" .. tostring(p.customPhysics) .. ":" .. arrayKey(p.physics)
+        local hint = catalog.blockHints[key]
+        if hint then
+            local overrides = inferOverrides(object, image, hint)
+            if overrides then return hint, overrides end
+        end
+        for _, item in ipairs(catalog.blocks) do
+            breathe()
+            if api.Busy and api.Paused then return nil, "Scan paused during catalog lookup" end
+            local overrides = inferOverrides(object, image, item)
+            if overrides then catalog.blockHints[key] = item; return item, overrides end
+        end
+        return nil, "No catalog block can reproduce this object's appearance/physics"
+    end
     -- Unknown instance GUIDs: require an exact Model structure, or an equivalent
     -- plain block. Appearance is verified against the chosen template afterward.
     local found, foundOverrides
-    for _, item in ipairs(catalog.entries) do
+    for _, item in ipairs(catalog.geometry[geometryBucket(image)] or {}) do
         breathe()
+        if api.Busy and api.Paused then return nil, "Scan paused during catalog lookup" end
         local eligible = image.kind == "Model" or image.class == "Part" and image.parts[1].shape == "Block" and image.parts[1].mesh == "" and #image.visuals == 0
         if eligible then
             local overrides = inferOverrides(object, image, item)
@@ -437,7 +474,7 @@ local function expand(object)
     local step = capture.step
     for x = math.floor((cf.X - radiusX) / step) - 1, math.floor((cf.X + radiusX) / step) + 1 do
         for z = math.floor((cf.Z - radiusZ) / step) - 1, math.floor((cf.Z + radiusZ) / step) + 1 do
-            breathe()
+            breathe(0)
             enqueue(Vector3.new((x + 0.5) * step, cf.Y, (z + 0.5) * step))
         end
     end
@@ -486,13 +523,22 @@ local function captureNearby()
     assert(capture and capture.jobId == game.JobId, "Start Copy in this source server first")
     local localGroups = {}
     local finished = true
-    for _, object in ipairs(buildFolder():GetChildren()) do
+    local objects = buildFolder():GetChildren()
+    local lastScanStatus = os.clock()
+    status(string.format("Scanning 0 / %d streamed objects; %d / %d already captured", #objects, capture.total or 0, capture.expected))
+    api.ScanProgress = {checked = 0, total = #objects}
+    for index, object in ipairs(objects) do
         breathe()
         if api.Busy and api.Paused then finished = false; break end
         local record = captureObject(object)
         local key = record.sourceKey
         localGroups[key] = localGroups[key] or {}
         localGroups[key][#localGroups[key] + 1] = record
+        api.ScanProgress.checked = index
+        if os.clock() - lastScanStatus >= 1 then
+            lastScanStatus = os.clock()
+            status(string.format("Scanning %d / %d streamed objects; %d / %d already captured", index, #objects, capture.total or 0, capture.expected))
+        end
     end
     for key, records in pairs(localGroups) do
         breathe()
@@ -564,6 +610,7 @@ local function copyDocument(complete)
     }
 end
 local function saveDraft()
+    status("Writing local draft; keep this server open...")
     disk(config.DraftFile, copyDocument(false))
     capture.lastDraft = os.clock()
 end
@@ -667,6 +714,31 @@ local function finishCopy()
     status(string.format("COPY COMPLETE: %d objects. %s verified. You can join your friend's server on this device/executor.", current, config.BackupFile))
     return document
 end
+local function revisitUnresolved()
+    -- Once every root is captured, stream the unresolved Models at their own
+    -- positions once. Do not traverse the entire circuit indefinitely for an
+    -- object that normal catalog placement cannot reproduce.
+    local positions, visited = {}, {}
+    for _, group in pairs(capture.groups) do
+        breathe()
+        for i = 1, group.unresolved or 0 do
+            local record = group.errors[i]
+            local image = record and record.image
+            if image and image.cf and #positions < 20 then
+                local key = arrayKey(image.cf)
+                if not visited[key] then positions[#positions + 1] = cframe(image.cf).Position; visited[key] = true end
+            end
+        end
+    end
+    for index, position in ipairs(positions) do
+        if api.Paused then break end
+        status(string.format("Rechecking unresolved objects: area %d / %d", index, #positions))
+        visit(position)
+        if api.Paused then break end
+        captureNearby()
+        if capture.unresolved == 0 then break end
+    end
+end
 function api.FinishCopy()
     return run("copying", finishCopy)
 end
@@ -678,7 +750,12 @@ function api.Copy()
         local lastStatus = os.clock()
         while not api.Paused do
             local report = captureReport()
-            if report.captured == capture.expected and report.unresolved == 0 then return finishCopy() end
+            assert(report.captured <= capture.expected, "Captured extra source identities; stop editing and use NewCopy in this source server")
+            if report.captured == capture.expected then
+                if report.unresolved > 0 then revisitUnresolved() end
+                if api.Paused then break end
+                return finishCopy()
+            end
             local tile = capture.queue[capture.nextTile]
             if not tile then break end
             visit(Vector3.new((tile.x + 0.5) * capture.step, tile.y, (tile.z + 0.5) * capture.step))
