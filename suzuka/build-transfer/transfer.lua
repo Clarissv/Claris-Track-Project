@@ -18,16 +18,64 @@ local config = {
     ProgressFile = "jakarta-build-import-progress.json", GridStep = 192,
     StreamTimeout = 5, SettleTime = 0.5, MaxTiles = 4096,
     PlacementTimeout = 12, PlacementInterval = 0.15, CatalogMap = {},
+    FpsMode = true, BatchSize = 32, WorkBudget = 0.004, DraftInterval = 30,
 }
+if old and old.Config and type(old.Config.FpsMode) == "boolean" then config.FpsMode = old.Config.FpsMode end
 for k, v in pairs(options.Config or {}) do assert(config[k] ~= nil, "Unknown setting: " .. k); config[k] = v end
 local api = {Config = config, State = "ready", Busy = false, Paused = false}
 _G.JakartaTransfer = api
-local statusLabel, screen, follower, capture, catalog, pending, freshCapture
+local statusLabel, screen, follower, capture, catalog, pending, freshCapture, fpsButton, fpsSession, pauseKey
+api.Metrics = {yields = 0, samples = 0, cacheHits = 0}
+local workUnits, lastYield = 0, os.clock()
+local function breathe(units)
+    workUnits = workUnits + (units or 1)
+    if workUnits >= config.BatchSize or os.clock() - lastYield >= config.WorkBudget then
+        workUnits = 0; api.Metrics.yields = api.Metrics.yields + 1
+        task.wait(); lastYield = os.clock()
+    end
+end
 local queryRunning = {}
 local function status(message)
     api.Message = message
     print("[Jakarta Transfer] " .. message)
     if statusLabel then statusLabel.Text = message end
+end
+local function applyFPS()
+    if not config.FpsMode or fpsSession then return end
+    local held = {}; fpsSession = held
+    local ok, service = pcall(function() return game:GetService("RunService") end)
+    if ok then
+        held.runService = service
+        held.renderDisabled = pcall(function() service:Set3dRenderingEnabled(false) end)
+    end
+    local lightingOK, lighting = pcall(function() return game:GetService("Lighting") end)
+    if lightingOK then
+        pcall(function() held.lighting = lighting; held.shadows = lighting.GlobalShadows; lighting.GlobalShadows = false end)
+    end
+    -- Use reversible quality reduction if the executor cannot control 3D drawing.
+    if not held.renderDisabled then
+        pcall(function()
+            local quality = UserSettings():GetService("UserGameSettings")
+            held.quality, held.savedQuality = quality, quality.SavedQualityLevel
+            quality.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+        end)
+    end
+    api.FpsActive = true
+end
+local function restoreFPS()
+    local held = fpsSession; fpsSession = nil
+    if not held then return end
+    if held.renderDisabled then pcall(function() held.runService:Set3dRenderingEnabled(true) end) end
+    if held.lighting then pcall(function() held.lighting.GlobalShadows = held.shadows end) end
+    if held.quality then pcall(function() held.quality.SavedQualityLevel = held.savedQuality end) end
+    api.FpsActive = false
+end
+function api.SetFPS(enabled)
+    assert(type(enabled) == "boolean", "Use SetFPS(true) or SetFPS(false)")
+    config.FpsMode = enabled
+    if enabled and api.Busy then applyFPS() else restoreFPS() end
+    if fpsButton then fpsButton.Text = "FPS mode: " .. (enabled and "ON" or "OFF") end
+    status(enabled and "FPS mode ON for transfer. Pause restores normal rendering." or "FPS mode OFF: normal rendering restored.")
 end
 local function finite(n) return type(n) == "number" and n == n and math.abs(n) < math.huge end
 local function near(a, b, tolerance) return finite(a) and finite(b) and math.abs(a - b) <= (tolerance or 0.02) end
@@ -95,12 +143,19 @@ local function settings()
     assert(finite(config.PlacementTimeout) and config.PlacementTimeout >= 2 and config.PlacementTimeout <= 60, "PlacementTimeout must be 2..60")
     assert(finite(config.PlacementInterval) and config.PlacementInterval >= 0.1, "PlacementInterval must be at least 0.1")
     assert(type(config.CatalogMap) == "table", "CatalogMap must be a table")
+    assert(type(config.FpsMode) == "boolean", "FpsMode must be true or false")
+    assert(finite(config.BatchSize) and config.BatchSize >= 1 and config.BatchSize <= 128 and config.BatchSize % 1 == 0, "BatchSize must be 1..128")
+    assert(finite(config.WorkBudget) and config.WorkBudget >= 0.001 and config.WorkBudget <= 0.02, "WorkBudget must be 0.001..0.02")
+    assert(finite(config.DraftInterval) and config.DraftInterval >= 5 and config.DraftInterval <= 120, "DraftInterval must be 5..120")
     assert(type(readfile) == "function" and type(writefile) == "function", "Your executor needs readfile and writefile")
 end
 local function checksum(raw)
     -- Accidental-corruption check. This is not a cryptographic signature.
     local a, b = 1, 0
-    for i = 1, #raw do a = (a + raw:byte(i)) % 65521; b = (b + a) % 65521 end
+    for first = 1, #raw, 4096 do
+        for i = first, math.min(first + 4095, #raw) do a = (a + raw:byte(i)) % 65521; b = (b + a) % 65521 end
+        breathe()
+    end
     return string.format("%08x", b * 65536 + a)
 end
 local function sealed(document)
@@ -123,7 +178,8 @@ local function disk(path, document, preserve)
     local raw = sealed(document)
     writefile(path .. ".tmp", raw)
     assert(readfile(path .. ".tmp") == raw, "Temporary file read-back failed; keep this server open")
-    unseal(readfile(path .. ".tmp"))
+    -- Exact read-back equality verifies the already sealed bytes without decoding
+    -- and checksumming the whole build again at each filesystem step.
     if preserve and exists(path) then
         local previous = readfile(path)
         writefile(path .. ".previous", previous)
@@ -131,7 +187,6 @@ local function disk(path, document, preserve)
     end
     writefile(path, raw)
     assert(readfile(path) == raw, "Backup read-back failed; keep this server open")
-    unseal(readfile(path))
     return raw
 end
 local function restoreCharacter()
@@ -181,6 +236,7 @@ local function sample(object)
     local descendants = object:GetDescendants()
     local all = {object}; for _, item in ipairs(descendants) do all[#all + 1] = item end
     for _, part in ipairs(all) do
+        breathe()
         if part:IsA("BasePart") then
             local relative = inverse * part.CFrame
             local coordinates = frame(relative)
@@ -233,6 +289,8 @@ local function imageKey(image)
     for _, v in ipairs(image.visuals) do result[#result + 1] = v.class .. v.texture .. v.face .. arrayKey(v.color) .. numberKey(v.transparency) end
     return table.concat(result, "|")
 end
+local partCache = setmetatable({}, {__mode = "k"})
+local recordKeys = setmetatable({}, {__mode = "k"})
 local function loadCatalog()
     local entries = query("GetCatalogManifest")
     local folder = storage:FindFirstChild("PlacementObject")
@@ -240,6 +298,7 @@ local function loadCatalog()
     assert(type(entries) == "table" and folder, "Build catalog is unavailable")
     local result = {entries = {}, names = {}, guids = {}}
     for _, entry in ipairs(entries) do
+        breathe()
         if type(entry) == "table" and type(entry.name) == "string" and type(entry.guid) == "string" then
             local template = folder:FindFirstChild(entry.guid, true)
             if template and (template:IsA("Model") or template:IsA("BasePart")) then
@@ -255,6 +314,7 @@ local function loadCatalog()
     assert(#result.entries > 0, "No usable catalog items")
     table.sort(result.entries, function(a, b) return a.name < b.name end)
     catalog = result
+    partCache = setmetatable({}, {__mode = "k"})
     return result
 end
 local function predict(template, overrides)
@@ -338,6 +398,7 @@ local function resolve(object, image)
     -- plain block. Appearance is verified against the chosen template afterward.
     local found, foundOverrides
     for _, item in ipairs(catalog.entries) do
+        breathe()
         local eligible = image.kind == "Model" or image.class == "Part" and image.parts[1].shape == "Block" and image.parts[1].mesh == "" and #image.visuals == 0
         if eligible then
             local overrides = inferOverrides(object, image, item)
@@ -376,35 +437,71 @@ local function expand(object)
     local step = capture.step
     for x = math.floor((cf.X - radiusX) / step) - 1, math.floor((cf.X + radiusX) / step) + 1 do
         for z = math.floor((cf.Z - radiusZ) / step) - 1, math.floor((cf.Z + radiusZ) / step) + 1 do
+            breathe()
             enqueue(Vector3.new((x + 0.5) * step, cf.Y, (z + 0.5) * step))
         end
     end
 end
+local cacheProperties = {"Name", "CFrame", "Size", "Shape", "Color", "Material", "MaterialVariant", "Transparency", "Reflectance", "CanCollide", "Anchored", "CustomPhysicalProperties"}
+local function captureObject(object)
+    -- Plain immutable-value Part properties are cheap to compare. Models and
+    -- Parts with descendants are always resampled so partial streaming and
+    -- per-child edits cannot be hidden by the cache.
+    local plain = object.ClassName == "Part" and #object:GetChildren() == 0
+    local cached = plain and partCache[object]
+    if cached and cached.mapping == config.CatalogMap[object.Name] then
+        local unchanged = true
+        for _, property in ipairs(cacheProperties) do if object[property] ~= cached.values[property] then unchanged = false; break end end
+        if unchanged then api.Metrics.cacheHits = api.Metrics.cacheHits + 1; return cached.record end
+    end
+    api.Metrics.samples = api.Metrics.samples + 1
+    local record = {sourceName = object.Name, sourceKey = rawKey(object)}
+    local ok, image = pcall(sample, object)
+    if ok then
+        record.image = image
+        local item, overrides, reason = resolve(object, image)
+        if item and overrides then record.catalogName, record.sourceGuid, record.overrides = item.name, item.guid, overrides
+        else record.error = reason or "Unrecognized catalog item" end
+    else record.error = tostring(image) end
+    expand(object)
+    if plain and not record.error then
+        local values = {}; for _, property in ipairs(cacheProperties) do values[property] = object[property] end
+        partCache[object] = {record = record, values = values, mapping = config.CatalogMap[object.Name]}
+    end
+    return record
+end
+local function recordKey(record)
+    if not recordKeys[record] then recordKeys[record] = imageKey(record.image) end
+    return recordKeys[record]
+end
+local function updateGroup(group)
+    local complete = 0
+    for _, records in pairs(group.complete) do complete = complete + #records end
+    local unresolved = math.max(0, group.maxCount - complete)
+    capture.total = (capture.total or 0) + complete + unresolved - (group.count or 0)
+    capture.unresolved = (capture.unresolved or 0) + unresolved - (group.unresolved or 0)
+    group.count, group.unresolved = complete + unresolved, unresolved
+end
 local function captureNearby()
     assert(capture and capture.jobId == game.JobId, "Start Copy in this source server first")
     local localGroups = {}
+    local finished = true
     for _, object in ipairs(buildFolder():GetChildren()) do
-        local key = rawKey(object)
-        local record = {sourceName = object.Name, sourceKey = key}
-        local ok, image = pcall(sample, object)
-        if ok then
-            record.image = image
-            local item, overrides, reason = resolve(object, image)
-            if item and overrides then
-                record.catalogName, record.sourceGuid, record.overrides = item.name, item.guid, overrides
-            else record.error = reason or "Unrecognized catalog item" end
-        else record.error = tostring(image) end
+        breathe()
+        if api.Busy and api.Paused then finished = false; break end
+        local record = captureObject(object)
+        local key = record.sourceKey
         localGroups[key] = localGroups[key] or {}
         localGroups[key][#localGroups[key] + 1] = record
-        expand(object)
     end
     for key, records in pairs(localGroups) do
+        breathe()
         local group = capture.groups[key] or {complete = {}, maxCount = 0, errors = {}}
         local complete, errors = {}, {}
         group.maxCount = math.max(group.maxCount, #records)
         for _, record in ipairs(records) do
             if record.error then errors[#errors + 1] = record else
-                local fingerprint = imageKey(record.image)
+                local fingerprint = recordKey(record)
                 complete[fingerprint] = complete[fingerprint] or {}
                 complete[fingerprint][#complete[fingerprint] + 1] = record
             end
@@ -416,19 +513,23 @@ local function captureNearby()
             if #matches >= #(group.complete[fingerprint] or {}) then group.complete[fingerprint] = matches end
         end
         if #errors > 0 then group.errors = errors end
+        updateGroup(group)
         capture.groups[key] = group
     end
+    return finished
 end
 local function capturedRecords()
     local keys, records = {}, {}
-    for key in pairs(capture.groups) do keys[#keys + 1] = key end
+    for key in pairs(capture.groups) do breathe(); keys[#keys + 1] = key end
     table.sort(keys)
     for _, key in ipairs(keys) do
+        breathe()
         local group, fingerprints, total = capture.groups[key], {}, 0
         for fingerprint in pairs(group.complete) do fingerprints[#fingerprints + 1] = fingerprint end
         table.sort(fingerprints)
         for _, fingerprint in ipairs(fingerprints) do
             for ordinal, record in ipairs(group.complete[fingerprint]) do
+                breathe()
                 record.id = key .. ":" .. (total + 1)
                 records[#records + 1] = record; total = total + 1
             end
@@ -441,10 +542,18 @@ local function capturedRecords()
     end
     return records
 end
-local function captureReport()
-    local records, errors = capturedRecords(), {}
-    for _, record in ipairs(records) do if record.error then errors[#errors + 1] = {name = record.sourceName, reason = record.error} end end
-    return {captured = #records, expected = capture.expected, unresolved = #errors, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue}
+local function captureReport(includeExamples)
+    local errors = {}
+    if includeExamples then
+        for _, group in pairs(capture.groups) do
+            breathe()
+            for i = 1, group.unresolved or 0 do
+                local record = group.errors[i]
+                if #errors < 20 then errors[#errors + 1] = {name = record.sourceName, reason = record.error} end
+            end
+        end
+    end
+    return {captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, metrics = api.Metrics}
 end
 local function copyDocument(complete)
     return {
@@ -454,7 +563,10 @@ local function copyDocument(complete)
         scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile} or nil,
     }
 end
-local function saveDraft() disk(config.DraftFile, copyDocument(false)) end
+local function saveDraft()
+    disk(config.DraftFile, copyDocument(false))
+    capture.lastDraft = os.clock()
+end
 local function restoreDraft()
     if freshCapture or not exists(config.DraftFile) then return false end
     local document = unseal(readfile(config.DraftFile))
@@ -470,15 +582,17 @@ local function restoreDraft()
     assert(type(document.backupId) == "string" and finite(document.source.expectedCount) and document.source.expectedCount >= 0 and type(document.records) == "table", "Invalid draft metadata")
     local recovered = {id = document.backupId, jobId = game.JobId, createdAt = document.source.createdAt, expected = document.source.expectedCount, step = scan.step, queue = scan.queue, nextTile = scan.nextTile, groups = {}, queued = {}}
     for _, tile in ipairs(scan.queue) do
+        breathe()
         assert(finite(tile.x) and tile.x % 1 == 0 and finite(tile.z) and tile.z % 1 == 0 and finite(tile.y), "Invalid draft scan position")
         recovered.queued[tile.x .. ":" .. tile.z] = true
     end
     for _, record in ipairs(document.records) do
+        breathe()
         assert(type(record.sourceKey) == "string", "Invalid draft object identity")
         local group = recovered.groups[record.sourceKey] or {complete = {}, maxCount = 0, errors = {}}
         group.maxCount = group.maxCount + 1
         if record.error then group.errors[#group.errors + 1] = record else
-            local fingerprint = imageKey(record.image)
+            local fingerprint = recordKey(record)
             group.complete[fingerprint] = group.complete[fingerprint] or {}
             group.complete[fingerprint][#group.complete[fingerprint] + 1] = record
         end
@@ -486,6 +600,7 @@ local function restoreDraft()
     end
     assert(serverCount() == recovered.expected, "Source object count changed since the draft; use NewCopy after editing stops")
     capture = recovered
+    for _, group in pairs(capture.groups) do breathe(); updateGroup(group) end
     status("Resumed local draft from this source server")
     return true
 end
@@ -498,6 +613,7 @@ local function startCapture()
     local builder = _G.SuzukaBuilder
     if builder and builder.GetTarget and finite(builder.Count) then
         for i = 1, builder.Count, 20 do
+            breathe()
             local ok, target = pcall(builder.GetTarget, i)
             if ok and target and target.cf then enqueue(target.cf.Position) end
         end
@@ -507,24 +623,43 @@ local function startCapture()
     enqueue(root.Position)
     captureNearby(); saveDraft()
 end
+local function run(label, operation)
+    assert(not api.Busy, "Another transfer operation is running")
+    access(); settings()
+    api.Busy, api.Paused, api.State = true, false, label
+    applyFPS()
+    task.wait() -- Draw the panel and accept input before starting heavy work.
+    local ok, result = pcall(operation)
+    if not ok and label == "copying" and capture then pcall(saveDraft) end
+    restoreCharacter(); restoreFPS()
+    api.Busy = false
+    if not ok then api.State = "stopped"; status(tostring(result)); error(result, 0) end
+    if api.Paused then api.State = "paused"; status("Paused. Local progress preserved; use Copy or Paste / Resume to continue.") end
+    return result
+end
 function api.Scan()
-    assert(not api.Busy, "Pause the running operation before scanning manually")
-    if not capture then startCapture() end
-    captureNearby(); saveDraft()
-    local report = captureReport()
-    status(string.format("Captured %d / %d; unresolved=%d. Draft saved.", report.captured, report.expected, report.unresolved))
-    return report
+    return run("copying", function()
+        if not capture then startCapture() end
+        captureNearby(); saveDraft()
+        local report = captureReport(true)
+        status(string.format("Captured %d / %d; unresolved=%d. Draft saved.", report.captured, report.expected, report.unresolved))
+        return report
+    end)
 end
 local function finishCopy()
     assert(capture, "Run Copy first")
     captureNearby()
+    if api.Paused then saveDraft(); return end
     local report = captureReport()
     local current = serverCount()
     saveDraft()
+    if api.Paused then return end
     assert(current == capture.expected, "Source object count changed while copying; stop editing and start a new Copy")
     assert(report.captured == current, string.format("Backup is incomplete: captured %d / %d. Keep this server open; walk to missing areas and Scan nearby.", report.captured, current))
     assert(report.unresolved == 0, "Some catalog objects/Models are unresolved; inspect _G.JakartaTransfer.Report().examples. Draft preserved.")
     local document = copyDocument(true)
+    if api.Paused then return end
+    status("Verifying complete backup on disk...")
     disk(config.BackupFile, document, true)
     local verified = unseal(readfile(config.BackupFile))
     assert(verified.complete and verified.backupId == capture.id and #verified.records == current, "Backup verification failed")
@@ -533,38 +668,25 @@ local function finishCopy()
     return document
 end
 function api.FinishCopy()
-    assert(not api.Busy, "Pause before finishing Copy manually")
-    settings(); return finishCopy()
-end
-local function run(label, operation)
-    assert(not api.Busy, "Another transfer operation is running")
-    access(); settings()
-    api.Busy, api.Paused, api.State = true, false, label
-    local ok, result = pcall(operation)
-    restoreCharacter()
-    api.Busy = false
-    if not ok then
-        if label == "copying" and capture then pcall(saveDraft) end
-        api.State = "stopped"; status(tostring(result)); error(result, 0)
-    end
-    if api.Paused then api.State = "paused"; status("Paused. Local progress preserved; use Copy or Paste / Resume to continue.") end
-    return result
+    return run("copying", finishCopy)
 end
 function api.Copy()
     return run("copying", function()
-        if not capture then startCapture() end
+        if not capture then startCapture() else loadCatalog() end
         assert(capture.jobId == game.JobId, "Join the original source server to continue this capture")
         assert(config.GridStep == capture.step, "Keep GridStep unchanged during a capture")
-        loadCatalog()
+        local lastStatus = os.clock()
         while not api.Paused do
             local report = captureReport()
             if report.captured == capture.expected and report.unresolved == 0 then return finishCopy() end
             local tile = capture.queue[capture.nextTile]
             if not tile then break end
             visit(Vector3.new((tile.x + 0.5) * capture.step, tile.y, (tile.z + 0.5) * capture.step))
-            captureNearby(); capture.nextTile = capture.nextTile + 1
-            if capture.nextTile % 25 == 0 then
-                saveDraft(); report = captureReport()
+            if api.Paused then break end
+            if captureNearby() then capture.nextTile = capture.nextTile + 1 end
+            if os.clock() - (capture.lastDraft or 0) >= config.DraftInterval then saveDraft() end
+            if os.clock() - lastStatus >= 1 then
+                report = captureReport(); lastStatus = os.clock()
                 status(string.format("Copy: %d / %d objects; %d unresolved; visited %d areas", report.captured, report.expected, report.unresolved, report.tilesVisited))
             end
         end
@@ -595,6 +717,7 @@ local function validateDocument(document)
     assert(type(document.records) == "table" and #document.records == document.source.expectedCount and #document.records <= 200000, "Backup count is invalid")
     local ids = {}
     for _, record in ipairs(document.records) do
+        breathe()
         assert(type(record) == "table" and type(record.id) == "string" and not ids[record.id] and not record.error and type(record.catalogName) == "string", "Invalid/unresolved backup object")
         ids[record.id] = true
         local image = record.image
@@ -602,6 +725,7 @@ local function validateDocument(document)
         validateFrame(image.cf)
         if image.kind == "Model" then assert(finite(image.size) and image.size > 0 and image.size <= 1000, "Invalid Model scale") else validateArray(image.size, 3, 0.001, 2048) end
         for _, p in ipairs(image.parts) do
+            breathe()
             validateFrame(p.cf); validateArray(p.size, 3, 0.000001); validateArray(p.color, 3, 0, 1)
             assert(type(p.class) == "string" and type(p.mesh) == "string" and type(p.shape) == "string" and type(p.variant) == "string" and Enum.Material[p.material], "Invalid Part metadata")
             assert(finite(p.transparency) and p.transparency >= 0 and p.transparency <= 1 and finite(p.reflectance) and p.reflectance >= 0 and p.reflectance <= 1 and type(p.collide) == "boolean" and p.anchored == true and type(p.customPhysics) == "boolean", "Invalid Part appearance/physics")
@@ -641,12 +765,13 @@ local function makeIndex(folder)
             local k = key(pos); buckets[k] = buckets[k] or {}; buckets[k][#buckets[k] + 1] = object
         end
     end
-    for _, object in ipairs(folder:GetChildren()) do add(object) end
+    for _, object in ipairs(folder:GetChildren()) do breathe(); add(object) end
     local connection = folder.ChildAdded:Connect(add)
     local function find(expected, used)
         local pos, groups, seen = cframe(expected.cf).Position, {}, {}
         for x = -1, 1 do for y = -1, 1 do for z = -1, 1 do
             for _, object in ipairs(buckets[key(pos + Vector3.new(x * 4, y * 4, z * 4))] or {}) do
+                breathe()
                 if object.Parent == folder and not seen[object] then
                     seen[object] = true
                     local ok, image = pcall(sample, object)
@@ -759,13 +884,15 @@ function api.RetryRejected()
 end
 function api.Pause() api.Paused = true; status("Pausing after the current request finishes...") end
 function api.Report()
-    local report = capture and captureReport() or {state = api.State, index = api.Index, pending = pending, progress = api.Progress}
+    local report = capture and captureReport(true) or {state = api.State, index = api.Index, pending = pending, progress = api.Progress, metrics = api.Metrics}
     print("[Jakarta Transfer] " .. http:JSONEncode(report))
     return report
 end
 function api.Dispose()
     assert(not api.Busy, "Pause before closing the helper")
     restoreCharacter()
+    restoreFPS()
+    if pauseKey then pauseKey:Disconnect(); pauseKey = nil end
     if screen then screen:Destroy(); screen = nil end
 end
 local function launch(fn)
@@ -774,9 +901,11 @@ end
 if not options.Headless then
     screen = Instance.new("ScreenGui")
     screen.Name = "JakartaTransferPanel"; screen.ResetOnSpawn = false
+    screen.DisplayOrder = 10000
     screen.Parent = player:WaitForChild("PlayerGui")
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.fromOffset(370, 300); panel.Position = UDim2.new(0, 16, 0.5, -150)
+    panel.Size = UDim2.fromOffset(370, 350); panel.Position = UDim2.new(1, -386, 0.5, -175)
+    panel.Active = true
     panel.BackgroundColor3 = Color3.fromRGB(25, 29, 38); panel.Parent = screen
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -20, 0, 30); title.Position = UDim2.fromOffset(10, 8)
@@ -792,6 +921,7 @@ if not options.Headless then
         b.BackgroundColor3 = Color3.fromRGB(49, 76, 111); b.TextColor3 = Color3.new(1, 1, 1)
         b.Text = text; b.TextSize = 14; b.Font = Enum.Font.Gotham; b.Parent = panel
         b.Activated:Connect(function() launch(fn) end)
+        return b
     end
     button("Copy / Resume scan", 10, 134, api.Copy)
     button("Paste / Resume", 190, 134, api.Paste)
@@ -799,6 +929,17 @@ if not options.Headless then
     button("Finish copy", 190, 180, api.FinishCopy)
     button("Pause", 10, 226, api.Pause)
     button("Report", 190, 226, api.Report)
+    fpsButton = button("FPS mode: " .. (config.FpsMode and "ON" or "OFF"), 10, 272, function() api.SetFPS(not config.FpsMode) end)
+    fpsButton.Size = UDim2.fromOffset(350, 38)
+    local hint = Instance.new("TextLabel")
+    hint.Size = UDim2.new(1, -20, 0, 24); hint.Position = UDim2.fromOffset(10, 318)
+    hint.BackgroundTransparency = 1; hint.Text = "F8: Pause  |  3D view returns when stopped"
+    hint.TextColor3 = Color3.fromRGB(215, 224, 240); hint.TextSize = 12; hint.Parent = panel
+    pcall(function()
+        pauseKey = game:GetService("UserInputService").InputBegan:Connect(function(input)
+            if input.KeyCode == Enum.KeyCode.F8 then api.Pause() end
+        end)
+    end)
 end
 status("Ready. Source: Copy. Friend's server: Paste. Keep the same executor workspace.")
 if mode == "copy" then launch(api.Copy) elseif mode == "paste" then launch(api.Paste) else assert(mode == nil or mode == "panel", "Use copy, paste, or panel mode") end

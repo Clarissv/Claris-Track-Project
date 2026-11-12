@@ -42,7 +42,8 @@ local function rgb(r,g,b)return {R=r,G=g,B=b,_type="Color3"}end
 Color3={new=rgb,fromRGB=function(r,g,b)return rgb(r/255,g/255,b/255)end}
 typeof=function(a)return type(a)=="table" and a._type or type(a)end
 local function e(name)return {Name=name,_type="EnumItem"}end
-Enum={Material={Plastic=e("Plastic"),Asphalt=e("Asphalt"),Grass=e("Grass"),Concrete=e("Concrete")},PartType={Block=e("Block"),Ball=e("Ball")},Font={Gotham=e("Gotham"),GothamBold=e("GothamBold")}}
+Enum={Material={Plastic=e("Plastic"),Asphalt=e("Asphalt"),Grass=e("Grass"),Concrete=e("Concrete")},PartType={Block=e("Block"),Ball=e("Ball")},Font={Gotham=e("Gotham"),GothamBold=e("GothamBold")},KeyCode={F8=e("F8")}}
+UDim2={new=function(xs,xo,ys,yo)return {xScale=xs,xOffset=xo,yScale=ys,yOffset=yo}end,fromOffset=function(x,y)return {xScale=0,xOffset=x,yScale=0,yOffset=y}end}
 local function signal()
     local s={listeners={}}
     function s:Connect(fn)local c={Connected=true,fn=fn};function c:Disconnect()self.Connected=false end;self.listeners[#self.listeners+1]=c;return c end
@@ -106,14 +107,22 @@ local function clone(a)
     local out={};for k,x in pairs(a)do out[k]=clone(x)end;return setmetatable(out,getmetatable(a))
 end
 local http={}
-function http:JSONEncode(value)jsonSerial=jsonSerial+1;local token="JSON-"..jsonSerial;jsonStore[token]=clone(value);return token end
+local jsonPadding=""
+function http:JSONEncode(value)jsonSerial=jsonSerial+1;local token="JSON-"..jsonSerial..jsonPadding;jsonStore[token]=clone(value);return token end
 function http:JSONDecode(raw)return clone(assert(jsonStore[raw],"Malformed JSON"))end
 function http:GenerateGUID()jsonSerial=jsonSerial+1;return "backup-"..jsonSerial end
 local failWrite
 writefile=function(path,raw)assert(path~=failWrite,"Simulated disk failure");files[path]=raw end
 readfile=function(path)return assert(files[path],"Missing file "..path)end
 isfile=function(path)return files[path]~=nil end
-game={PlaceId=14005966837,JobId="source",GetService=function(_,name)if name=="Players"then return {LocalPlayer=player}elseif name=="ReplicatedStorage"then return storage elseif name=="HttpService"then return http end;error(name)end}
+local runService={enabled=true,calls={}}
+function runService:Set3dRenderingEnabled(enabled)
+    if self.failDisable and not enabled then error("3D control unavailable")end
+    self.enabled=enabled;self.calls[#self.calls+1]=enabled
+end
+local lighting={GlobalShadows=true}
+local inputs={InputBegan=signal()}
+game={PlaceId=14005966837,JobId="source",GetService=function(_,name)if name=="Players"then return {LocalPlayer=player}elseif name=="ReplicatedStorage"then return storage elseif name=="HttpService"then return http elseif name=="RunService"then return runService elseif name=="Lighting"then return lighting elseif name=="UserInputService"then return inputs end;error(name)end}
 local function duplicateTemplate(template,name,frame,size)
     local object=instance(template.ClassName)
     for k,value in pairs(template.props)do if k~="Parent" and k~="ChildAdded" and k~="Activated"then object[k]=clone(value)end end
@@ -281,6 +290,62 @@ api=load();api.Copy();local opacity=backupDocument()
 check(opacity.records[1].overrides.transparency==0.4,"Model opacity recovered with invisible first Part")
 clear();game.JobId="friend-model-opacity";api=load();api.Paste()
 check(api.State=="pasted" and #builds:GetChildren()==1,"Model opacity and invisible helper preserved")
+-- Large source scans sample unchanged plain Parts once, yield between batches,
+-- and still detect later edits. Models continue to be sampled without caching.
+clear();game.JobId="source-responsiveness";workspace.StreamingEnabled=false
+local population={}
+for i=1,96 do local p=duplicateTemplate(block,"guid-block",cf(i*5,5,5),v(4,4,4));p.Parent=builds;population[i]=p end
+api=load();api.Scan()
+check(api.Metrics.samples==96 and api.Metrics.cacheHits>=96,"Plain Parts reused across nearby scans")
+check(api.Metrics.yields>0,"Large source scan yields to Roblox input")
+population[1].Color=rgb(0.5,0.25,0.75);local sampled=api.Metrics.samples;api.Scan()
+check(api.Metrics.samples==sampled+1,"Edited Part invalidates cached snapshot")
+before=files["jakarta-build-backup.json"];api=load()
+onWait=function()if api.Metrics.samples>=16 then api.Pause();onWait=nil end end
+api.NewCopy()
+check(api.State=="paused" and not api.Busy and api.Report().captured<96,"Pause interrupts a large scan between batches")
+check(files["jakarta-build-backup.json"]==before,"Interrupted copy preserves last completed backup")
+check(runService.enabled and lighting.GlobalShadows and not api.FpsActive,"Pause restores rendering and shadows")
+api=load();api.Copy()
+check(backupDocument().complete and #backupDocument().records==96,"Interrupted scan resumes without omissions")
+check(backupDocument().records[1] and runService.enabled and not api.FpsActive,"Completed copy restores 3D drawing")
+-- Checksum work also yields; long payloads keep the original envelope checksum
+-- and read-back validation even though redundant verification passes are removed.
+clear();game.JobId="source-long-payload";duplicateTemplate(block,"guid-block",cf(),v(4,4,4)).Parent=builds
+api=load();jsonPadding=string.rep("x",200000);local checksumYields=0
+onWait=function()if api.Busy and files["jakarta-build-draft.json.tmp"] then checksumYields=checksumYields+1 end end
+api.Copy();jsonPadding="";onWait=nil
+check(checksumYields>0 and backupDocument().complete,"Large file checksums yield and verify correctly")
+-- FPS mode controls only the local renderer/shadows; source appearance survives.
+clear();game.JobId="source-fps-toggle";local unchanged=duplicateTemplate(block,"guid-block",cf(),v(4,4,4));unchanged.Color=rgb(0.2,0.3,0.4);unchanged.Parent=builds
+api=load();local toggled=false
+onWait=function()if api.Busy and not toggled then
+    toggled=true
+    check(not runService.enabled and not lighting.GlobalShadows,"FPS mode hides 3D drawing during capture")
+    api.SetFPS(false);check(runService.enabled and lighting.GlobalShadows,"FPS toggle restores drawing while running")
+    api.SetFPS(true);check(not runService.enabled,"FPS toggle can enable drawing reduction again")
+end end
+api.Copy();onWait=nil
+check(toggled and backupDocument().records[1].image.parts[1].color[2]==0.3,"FPS mode leaves backup appearance intact")
+check(runService.enabled and lighting.GlobalShadows,"Normal completion restores local settings")
+-- A runtime that rejects 3D control can still complete a transfer.
+game.JobId="source-fps-fallback";runService.failDisable=true;api=load();api.Copy();runService.failDisable=false
+check(api.State=="copied" and runService.enabled and lighting.GlobalShadows,"Unavailable 3D control does not stop copy")
+game.JobId="friend-fps-error";clear();files["jakarta-build-import-progress.json"]=nil;reject=true;api=load()
+fails(api.Paste,"unconfirmed");reject=false
+check(runService.enabled and lighting.GlobalShadows and not api.FpsActive,"Placement failure restores FPS settings")
+-- Exercise the actual panel button and F8 pause connection, including cleanup.
+game.JobId="source-panel";api=assert(loadstring(transferSource))("panel",{Config={PlacementTimeout=2,SettleTime=0.1}})
+local panelScreen=gui:FindFirstChild("JakartaTransferPanel")
+local panel=panelScreen:FindFirstChildOfClass("Frame");local fpsControl
+for _,item in ipairs(panel:GetChildren())do if item.Text=="FPS mode: ON"then fpsControl=item end end
+local keyboardPaused=false
+onWait=function()if api.Busy and not keyboardPaused then keyboardPaused=true;inputs.InputBegan:Fire({KeyCode=Enum.KeyCode.F8})end end
+api.NewCopy();onWait=nil
+check(keyboardPaused and api.State=="paused" and runService.enabled,"F8 can pause capture and restore drawing")
+fpsControl.Activated:Fire();check(api.Config.FpsMode==false,"Panel FPS button remains callable after pause")
+api.Dispose();api.Paused=false;inputs.InputBegan:Fire({KeyCode=Enum.KeyCode.F8})
+check(not api.Paused and not gui:FindFirstChild("JakartaTransferPanel"),"Dispose removes panel and pause hotkey")
 -- Loader URLs and execution modes actually select the correct entry point.
 local requestedModes={}
 function game:HttpGet(url)check(url=="https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/suzuka/build-transfer/transfer.lua","Loader URL");return "return function() end" end

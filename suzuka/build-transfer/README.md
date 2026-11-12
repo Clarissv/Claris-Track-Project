@@ -66,6 +66,26 @@ Your build backup stays on your device; upload only the helper code.
 
 ## Pause and recovery
 
+FPS mode is enabled by default during Copy, Paste and manual scans. It temporarily
+disables local 3D drawing when supported, keeping the transfer panel visible.
+If that control is unavailable, it reduces local shadows and graphics quality
+where supported. Normal drawing/settings return when paused, completed, stopped
+on an error or disposed. Use **FPS mode: ON/OFF** to toggle it, including while
+the operation is running. Your build's materials, colors, textures, transparency
+and geometry are preserved.
+
+The panel opens on the right, above the game's HUD. Press **F8** to pause when
+using the mouse is difficult. The scan yields between small batches and reuses
+unchanged plain Part snapshots; Models and Parts with descendants are always
+resampled to check streaming completeness. File checksums also yield between
+chunks. Large native JSON encoding/decoding operations can still cause a brief
+stutter; actual in-game FPS improvement has not been measured.
+
+To replace an older running helper, run `_G.JakartaTransfer.Pause()` in the
+executor, wait for **Paused**, then run the updated Copy loader in the same
+source server. Keep the existing backup, draft and progress files; the updated
+helper reads the same formats and resumes the draft.
+
 Use **Pause**, then the corresponding **Copy / Resume scan** or **Paste / Resume**
 button. Reloading the helper resumes an unfinished draft in the same source
 server. Import progress survives helper reloads in the same destination server.
@@ -103,6 +123,12 @@ simple `.json` filenames before starting if transferring a separate build. File
 read-back checks detect accidental corruption; the previous completed backup is
 preserved as `.previous` before replacement.
 
+`Config.BatchSize` defaults to 32 work units, `Config.WorkBudget` to 0.004
+seconds and `Config.DraftInterval` to 30 seconds. Automatic drafts are written
+between scan areas after that interval; pause, stop and finish also write one.
+Smaller batches yield more often. Pausing during a scan preserves the partial
+snapshot and revisits that area on resume.
+
 ## Supported build and verification limits
 
 The helper reconstructs catalog Parts and complete catalog Models using the
@@ -137,7 +163,9 @@ draft recovery after reload, mixed Model colors, default parts without Plus,
 pause/resume, late/rejected placement, durable pending requests, corrupted backups,
 catalog validation and loader modes with offline doubles. Actual Roblox placement,
 driving and the friend's save/reload still require an in-game session.
-All 49 behavioral checks passed locally on 2026-11-12. The local package was
+All 69 behavioral checks passed locally on 2026-11-12, including large-scan
+pause/resume, cache invalidation, chunked checksums, FPS toggle/restoration and
+the panel's F8 binding. The local package was
 also opened and its four archived files compared with the current sources.
 
 The package script defaults to `Suzuka/jakarta-transfer.zip` in the parent source
