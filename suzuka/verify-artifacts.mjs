@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-const here=new URL('./',import.meta.url),read=name=>fs.readFileSync(new URL(name,here)),sha=b=>crypto.createHash('sha256').update(b).digest('hex'),plan=JSON.parse(read('suzuka-plan.json')),manifest=JSON.parse(read('release-manifest.json'));
+const here=new URL(process.env.SUZUKA_LOW_SPAWN==='1'?'./low-spawn/':'./',import.meta.url),read=name=>fs.readFileSync(new URL(name,here)),sha=b=>crypto.createHash('sha256').update(b).digest('hex'),plan=JSON.parse(read('suzuka-plan.json')),manifest=JSON.parse(read('release-manifest.json'));
 for(const entry of manifest.files){const body=read(entry.path);assert.equal(body.length,entry.bytes);assert.equal(sha(body),entry.sha256);}
 const runtime=JSON.parse(read(`releases/${manifest.version}/runtime-plan.json`));assert.equal(sha(Buffer.from(JSON.stringify(runtime.parts))),sha(Buffer.from(JSON.stringify(plan.parts))),'Release geometry differs from the generated plan');assert.equal(sha(Buffer.from(JSON.stringify(runtime.meta))),sha(Buffer.from(JSON.stringify(plan.meta))),'Release metadata differs from the generated plan');
 const html=read('suzuka-3d-viewer.html').toString();assert.ok(!html.includes('/* GENERATED_DATA */'));assert.ok(!html.includes('/* SOURCE_ELEVATION */'));

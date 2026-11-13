@@ -567,6 +567,68 @@ for _, value in ipairs({-1, 1.5, math.huge, "Failed"}) do
     assert(not ok and #calls == 0, "Invalid server counts must not allow placement")
 end
 
+-- A moderator can place in a fresh server even when the save-count query is denied.
+api = fresh()
+local grass = child(builds, "Part", "OriginalGrass")
+grass.CFrame = cf(1000,0,1000)
+placedCountOverride = function() return nil end
+ok, message = pcall(api.Build)
+assert(not ok and #calls == 0 and message:find("UseModeratorCount(1)",1,true), "Denied save queries must explain the moderator option before placement")
+api.UseModeratorCount(1)
+pauseAfterFirst = true
+api.Build()
+local moderatorReport = api.VerifyObjectCount()
+assert(api.State == "paused" and #calls == 1 and moderatorReport.objectCount == 2 and moderatorReport.matches and moderatorReport.authoritative == false and moderatorReport.serverCount == nil, "Moderator pause tracks the baseline plus confirmed placements without claiming a server count")
+assert(not pcall(api.VerifyServerCount), "Explicit server verification must still query the actual server in moderator mode")
+assert(not pcall(api.UseModeratorCount,1), "A running count baseline must not be reset after placements")
+checkpointBuilder()
+pauseAfterFirst = false
+api.Build()
+api.Build()
+moderatorReport = api.VerifyObjectCount()
+assert(api.State == "complete" and #calls == 2 and moderatorReport.objectCount == 3 and moderatorReport.matches, "Moderator resume and repeated Build must not duplicate confirmed objects")
+placedCountOverride = nil
+assert(api.VerifyServerCount().matches, "The owner count can authoritatively verify the moderator total")
+placedCountOverride = function() return 2 end
+assert(not api.VerifyServerCount().matches, "Owner verification must detect a mismatch with the tracked total")
+api.Config.Origin = api.GetTarget(1).origin
+placedCountOverride = function() return nil end
+api.Repair()
+assert(#calls == 2 and api.ReusedCount == 2 and api.VerifyObjectCount().objectCount == 3, "Moderator repair must preserve the count when reusing existing parts")
+
+api = fresh()
+workspace.StreamingEnabled = true
+placedCountOverride = function() error("save access denied") end
+api.UseModeratorCount(1) -- The grass may be streamed out; this is a known baseline.
+api.Build()
+assert(#calls == 2 and api.VerifyObjectCount().objectCount == 3, "Moderator tracking must retain the known count when the original grass is streamed out")
+child(builds,"Part","UnexpectedA")
+child(builds,"Part","UnexpectedB")
+assert(not pcall(api.VerifyObjectCount), "More visible objects than the tracked total must require owner inspection")
+
+api = fresh()
+api.UseModeratorCount(1)
+api.Config.ServerObjectLimit = 2
+assert(not pcall(api.Build) and #calls == 0, "Moderator mode must retain the object-limit guard including existing grass")
+api = fresh()
+api.UseModeratorCount(1)
+api.Config.SaveObjectLimit = 2
+assert(not pcall(api.Build) and #calls == 0, "Moderator mode must retain confirmed save limits")
+for _, value in ipairs({-1,1.5,math.huge,"1"}) do
+    api = fresh()
+    assert(not pcall(api.UseModeratorCount,value) and #calls == 0, "Moderator baseline must be a nonnegative integer")
+end
+api = fresh()
+child(builds,"Part","ExistingA")
+child(builds,"Part","ExistingB")
+assert(not pcall(api.UseModeratorCount,1), "A one-grass baseline must reject a visibly nonempty server")
+api = fresh()
+api.UseModeratorCount(0)
+reject = true
+assert(not pcall(api.Build) and #calls == 1 and api.NextIndex == 1 and api.ExpectedObjectCount == 0, "An unconfirmed moderator request must not increase the tracked count")
+assert(not pcall(api.UseModeratorCount,0) and not pcall(checkpointBuilder), "A pending moderator placement must block rebasing and checkpoint export")
+assert(not pcall(api.Build) and #calls == 1, "Moderator mode must never resend an uncertain placement")
+
 api = fresh()
 catalogNames = { "Rectangle A", "Rectangle B" }
 local name = api.Inspect()
@@ -705,6 +767,25 @@ placementOverride=function(o) o.CFrame=o.CFrame*CFrame.Angles(0,.001,0) end
 assert(not pcall(api.Build) and #calls==1 and api.NextIndex==1,"A yaw change with acceptable height must still fail if the footprint moves too far")
 fixtureDocument.parts[1][6]=6
 api = fresh()
+
+-- Exercise the fresh-server entry point with the same generated runtime.
+local function loadModeratorLauncher()
+    -- SUZUKA_MODERATOR_LAUNCHER
+end
+local originalReadfile = readfile
+_G.SuzukaOfflineBuilder = loadBuilder
+readfile = function(path)
+    if path == "Suzuka/suzuka-builder.lua" then return "return _G.SuzukaOfflineBuilder(...)" end
+    return originalReadfile(path)
+end
+api = loadModeratorLauncher()
+readfile, _G.SuzukaOfflineBuilder = originalReadfile, nil
+assert(api.Config.ObjectCountMode == "moderator" and #calls == 0, "The moderator launcher must open the generated builder without placing objects")
+local panelTitle
+for _, control in ipairs(gui:FindFirstChild("SuzukaBuilderPanel"):GetDescendants()) do
+    if control.Text == "SUZUKA BUILDER" then panelTitle = control end
+end
+assert(panelTitle, "The Suzuka panel must use its circuit name")
 
 -- HTTP_LOADER_TESTS
 assert(_G.SepangBuilder == elevatedSentinel, "All Suzuka operations must preserve the elevated builder")

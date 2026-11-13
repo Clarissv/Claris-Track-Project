@@ -1,4 +1,4 @@
-param([string]$LuaLibrary = 'C:\Program Files\VideoLAN\VLC\plugins\lua\liblua_plugin.dll', [string]$HttpLoader = '')
+param([string]$LuaLibrary = 'C:\Program Files\VideoLAN\VLC\plugins\lua\liblua_plugin.dll', [string]$HttpLoader = '', [switch]$LowSpawn)
 $ErrorActionPreference = 'Stop'
 $libraryPath = (Resolve-Path -LiteralPath $LuaLibrary).Path
 $dependencyPath = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $libraryPath))
@@ -26,18 +26,24 @@ $state = [SuzukaLuaNative]::luaL_newstate()
 try {
     [SuzukaLuaNative]::luaL_openlibs($state)
     # Compile the entire generated artifact without executing it.
-    $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'suzuka-builder.lua'))
+    $artifactRoot = if ($LowSpawn) { Join-Path $PSScriptRoot 'low-spawn' } else { $PSScriptRoot }
+    $source = [IO.File]::ReadAllText((Join-Path $artifactRoot 'suzuka-builder.lua'))
     $bytes = [Text.Encoding]::UTF8.GetBytes($source)
     $result = [SuzukaLuaNative]::luaL_loadbuffer($state, $bytes, [UIntPtr]::new([uint64]$bytes.Length), 'suzuka-builder.lua')
     if ($result -ne 0) { throw [Runtime.InteropServices.Marshal]::PtrToStringAnsi([SuzukaLuaNative]::lua_tolstring($state, -1, [IntPtr]::Zero)) }
     # Exercise the generated runtime with mocked JSON decoding and endpoints.
     $fixture = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-builder.lua')).Replace('-- SUZUKA_SCRIPT', $source)
-    $fixture = $fixture.Replace('-- SUZUKA_DIAGNOSTIC', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'suzuka-diagnose.lua')))
-    $fixture = $fixture.Replace('-- SUZUKA_CHECKPOINT', [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'suzuka-checkpoint.lua')))
+    $fixture = $fixture.Replace('-- SUZUKA_DIAGNOSTIC', [IO.File]::ReadAllText((Join-Path $artifactRoot 'suzuka-diagnose.lua')))
+    $fixture = $fixture.Replace('-- SUZUKA_CHECKPOINT', [IO.File]::ReadAllText((Join-Path $artifactRoot 'suzuka-checkpoint.lua')))
+    $fixture = $fixture.Replace('-- SUZUKA_MODERATOR_LAUNCHER', [IO.File]::ReadAllText((Join-Path $artifactRoot 'suzuka-moderator-run.lua')))
     if ($HttpLoader) {
         $httpTests = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'test-http-loader.lua'))
         $httpTests = $httpTests.Replace('-- HTTP_LOADER_SOURCE', [IO.File]::ReadAllText((Resolve-Path -LiteralPath $HttpLoader).Path))
         $fixture = $fixture.Replace('-- HTTP_LOADER_TESTS', $httpTests)
+    }
+    if ($LowSpawn) {
+        $fixture = $fixture.Replace('Suzuka/', 'SuzukaLow/').Replace('suzuka-jakarta-checkpoint.json', 'suzuka-low-spawn-jakarta-checkpoint.json')
+        $fixture = $fixture.Replace('main/suzuka/releases/', 'main/suzuka/low%-spawn/releases/')
     }
     $bytes = [Text.Encoding]::UTF8.GetBytes($fixture)
     $result = [SuzukaLuaNative]::luaL_loadbuffer($state, $bytes, [UIntPtr]::new([uint64]$bytes.Length), 'suzuka-offline-tests')

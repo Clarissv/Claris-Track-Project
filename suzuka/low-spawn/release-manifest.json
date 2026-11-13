@@ -1,0 +1,33 @@
+{
+  "format": "suzuka-github-release-v1",
+  "version": "51cdf3f87af7d09dce41",
+  "partCount": 8301,
+  "totalWithExistingGrass": 8302,
+  "files": [
+    {
+      "path": "releases/51cdf3f87af7d09dce41/suzuka-builder.lua",
+      "bytes": 53153,
+      "sha256": "eae76af1762dda1539426845aa106ffdb95b5c5db578a61a2ec862b7cc77732c"
+    },
+    {
+      "path": "releases/51cdf3f87af7d09dce41/runtime-plan.json",
+      "bytes": 3491114,
+      "sha256": "b2da5fd35f6e3efb79ba3235337f9e6520a210aa7c219e2fea3219fef1cf21e0"
+    },
+    {
+      "path": "releases/51cdf3f87af7d09dce41/suzuka-checkpoint.lua",
+      "bytes": 4038,
+      "sha256": "abe1e506192926369e3c9f936be363101f35531aac16c5a6db0ba0d3d246c1bf"
+    },
+    {
+      "path": "releases/51cdf3f87af7d09dce41/suzuka-diagnose.lua",
+      "bytes": 5466,
+      "sha256": "4148cb06cc6cff5dd3b564aca1cce5fb209983876f6413b6348774423fd6c688"
+    },
+    {
+      "path": "releases/51cdf3f87af7d09dce41/loader.lua",
+      "bytes": 1736,
+      "sha256": "a5e9ee4107f71f1f6c1727f5835cf07219a5b6f0b65c4edc8f0beb19a8bcbe7f"
+    }
+  ]
+}

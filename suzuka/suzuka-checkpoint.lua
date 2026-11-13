@@ -6,8 +6,10 @@ assert(game.PlaceId == 14005966837 and api.PlaceId == game.PlaceId, "Suzuka: exp
 local request = assert(api.RequestDiagnostics(), "No captured placement transform")
 assert(type(writefile) == "function", "The executor needs writefile to export the checkpoint")
 assert(not (request.index == api.NextIndex and request.observed ~= nil), "A placement was sent but is unconfirmed; reconcile it before exporting a checkpoint")
-if api.VerifyServerCount then
-    assert(api.VerifyServerCount().matches, "Server count mismatch; run diagnose before exporting a checkpoint")
+if api.VerifyObjectCount or api.VerifyServerCount then
+    local report = (api.VerifyObjectCount or api.VerifyServerCount)()
+    assert(report.matches, "Object count mismatch; run diagnose before exporting a checkpoint")
+    if report.authoritative == false then print("[Suzuka checkpoint] Moderator count is tracked. Have the owner verify and save the partial build before leaving.") end
 end
 local http = game:GetService("HttpService")
 local plan = http:JSONDecode(inlineJson or readfile(dataPath or "Suzuka/suzuka-plan.json"))

@@ -29,6 +29,7 @@ local CONFIG = {
     MaxObjects = 8998,
     ServerObjectLimit = 10000, -- Local count guard; Jakarta's server save cap is not established by the export.
     SaveObjectLimit = nil, -- Set only to a confirmed Jakarta save limit; includes other placed objects.
+    ObjectCountMode = "server", -- UseModeratorCount(n) enables tracking from a known starting count.
     ApplyAppearance = true, -- Color/material controls require the game's Build Tools Plus access.
 }
 -- GENERATED_DATA
@@ -56,6 +57,7 @@ local follower
 local statusLabel, catalogButton
 local owners, uuidOwners = {}, {}
 local repairing = false
+local trackedCount
 local function status(message, quiet)
     if not quiet then print("[SuzukaBuilder] " .. message) end
     if statusLabel then statusLabel.Text = message end
@@ -470,7 +472,8 @@ local function record(object, index, sent)
     api.Placed[index] = object
     if sent then
         api.SentCount = api.SentCount + 1
-        if api.ExpectedServerCount then api.ExpectedServerCount = api.ExpectedServerCount + 1 end
+        if api.ExpectedObjectCount then api.ExpectedObjectCount = api.ExpectedObjectCount + 1 end
+        if trackedCount then trackedCount = trackedCount + 1 end
     else api.ReusedCount = api.ReusedCount + 1 end
     api.NextIndex = index + 1
     pending = nil
@@ -481,18 +484,45 @@ local function queryServerCount()
     task.spawn(function() queryOk, result = pcall(function() return saver:InvokeServer("GetPlacedAmount") end); done = true end)
     local deadline = os.clock() + 12
     repeat task.wait(0.05) until done or os.clock() >= deadline
-    assert(done and queryOk and type(result) == "number" and result >= 0 and result < math.huge and result % 1 == 0, "Could not verify Jakarta's placed-object count")
+    assert(done and queryOk and type(result) == "number" and result >= 0 and result < math.huge and result % 1 == 0,
+        "Jakarta save-count query failed (" .. (done and tostring(result) or "timed out") .. "). Moderator build access may not include this save query. On a fresh server with only the original grass plate, run _G.SuzukaBuilder.UseModeratorCount(1), then Build / Resume. Otherwise ask the owner for the current count.")
     api.ServerCount = result
     return result
 end
-function api.VerifyServerCount()
-    assert(not busy and not previewing, "Pause the build before checking its server count")
-    local count = queryServerCount()
-    local report = {serverCount=count, expectedServerCount=api.ExpectedServerCount,
+function api.UseModeratorCount(existingCount)
+    assert(not busy and not previewing and not pending, "Pause and reconcile any pending placement before changing count mode")
+    assert(api.ExpectedObjectCount == nil, "Choose count mode before the first build or after loading a checkpoint")
+    assert(type(existingCount) == "number" and existingCount >= 0 and existingCount < math.huge and existingCount % 1 == 0, "Supply the known current object count; 1 means only the original grass plate")
+    local folder = assert(workspace:FindFirstChild("EditableBuilds"), "Enable build tools first")
+    assert(existingCount >= #folder:GetChildren() and existingCount >= api.NextIndex - 1, "The supplied count is below the visible objects or checkpoint progress")
+    trackedCount, CONFIG.ObjectCountMode = existingCount, "moderator"
+    api.ServerCount = nil
+    status("Moderator mode: starting with " .. existingCount .. " known objects. Confirmed placements are tracked; the owner must verify the total and save.")
+end
+local function queryObjectCount()
+    assert(CONFIG.ObjectCountMode == "server" or CONFIG.ObjectCountMode == "moderator", "ObjectCountMode must be server or moderator")
+    if CONFIG.ObjectCountMode == "server" then return queryServerCount(), true end
+    assert(trackedCount ~= nil, "Run UseModeratorCount with the known current object count first")
+    local folder = assert(workspace:FindFirstChild("EditableBuilds"), "EditableBuilds is missing")
+    assert(#folder:GetChildren() <= trackedCount, "More objects are visible than the tracked total; ask the owner to check the build")
+    return trackedCount, false
+end
+local function countReport(count, authoritative)
+    local report = {objectCount=count, authoritative=authoritative,
+        serverCount=authoritative and count or nil, expectedObjectCount=api.ExpectedObjectCount,
+        expectedServerCount=api.ExpectedObjectCount,
         confirmedPlanParts=api.NextIndex-1, planParts=#PLAN, sentCount=api.SentCount, reusedCount=api.ReusedCount}
-    report.matches = report.expectedServerCount ~= nil and count == report.expectedServerCount
+    report.matches = report.expectedObjectCount ~= nil and count == report.expectedObjectCount
     api.LastCountReport = report
     return report
+end
+function api.VerifyServerCount()
+    assert(not busy and not previewing, "Pause the build before checking its server count")
+    return countReport(queryServerCount(), true)
+end
+function api.VerifyObjectCount()
+    assert(not busy and not previewing, "Pause the build before checking its object count")
+    return countReport(queryObjectCount())
 end
 function api.Pause()
     paused = true
@@ -502,9 +532,9 @@ function api.Build()
     assert(not ((_G.SepangBuilder and _G.SepangBuilder.State == "building") or (_G.SepangFlatBuilder and _G.SepangFlatBuilder.State == "building")), "Pause the Sepang builder before building Suzuka")
     assert(not busy and not previewing, "Wait for the preview to finish; only one build can run")
     if api.NextIndex > #PLAN then
-        local report = api.VerifyServerCount()
-        assert(report.matches, "Server object count changed after completion; run diagnose before saving")
-        status("Build already complete; server count verified: " .. report.serverCount)
+        local report = api.VerifyObjectCount()
+        assert(report.matches, "Object count changed after completion; run diagnose before saving")
+        status("Build already complete; " .. (report.authoritative and "server count verified: " or "tracked total (owner verification required): ") .. report.objectCount)
         return
     end
     assert(not ((_G.MonzaBuilder and _G.MonzaBuilder.State == "building") or (_G.MonzaTerrainBuilder and _G.MonzaTerrainBuilder.State == "building")), "Pause the Monza builder before building Suzuka")
@@ -532,9 +562,9 @@ function api.Build()
         record(object, pending.index, true)
     end
     -- Jakarta's save UI queries the server count, including objects streamed out locally.
-    local currentCount = queryServerCount()
-    assert(not api.ExpectedServerCount or currentCount == api.ExpectedServerCount, "Server object count changed since the previous pause; run diagnose before resuming")
-    api.ExpectedServerCount = currentCount
+    local currentCount = queryObjectCount()
+    assert(not api.ExpectedObjectCount or currentCount == api.ExpectedObjectCount, "Object count changed since the previous pause; run diagnose before resuming")
+    api.ExpectedObjectCount = currentCount
     local remainingCount = #PLAN - api.NextIndex + 1
     if restoredCheckpoint then
         assert(currentCount >= api.NextIndex - 1, "Load your saved partial build before resuming this checkpoint")
@@ -593,8 +623,8 @@ function api.Build()
                 -- A confirmed matching part can be reused after reloading the script.
                 record(already, index)
             else
-                assert(api.ExpectedServerCount + 1 <= CONFIG.ServerObjectLimit, "The next missing part would exceed the local server object guard")
-                assert(not CONFIG.SaveObjectLimit or api.ExpectedServerCount + 1 <= CONFIG.SaveObjectLimit, "The next missing part would exceed the confirmed save object limit")
+                assert(api.ExpectedObjectCount + 1 <= CONFIG.ServerObjectLimit, "The next missing part would exceed the local server object guard")
+                assert(not CONFIG.SaveObjectLimit or api.ExpectedObjectCount + 1 <= CONFIG.SaveObjectLimit, "The next missing part would exceed the confirmed save object limit")
                 pending = request
                 local started = os.clock()
                 local candidates = {}
@@ -635,15 +665,13 @@ function api.Build()
             end
             if index == 1 or index % 25 == 0 then status(string.format("Confirmed %d / %d parts", index, #PLAN)) end
         end
-        -- Compare with the same authoritative count used by the game's save UI.
-        -- Streaming changes the local folder count, so it cannot establish this.
-        api.Phase = "verifying server count"
-        local serverCount = queryServerCount()
-        if serverCount ~= api.ExpectedServerCount then
+        api.Phase = "checking object count"
+        local objectCount = queryObjectCount()
+        if objectCount ~= api.ExpectedObjectCount then
             task.wait(0.5)
-            serverCount = queryServerCount()
+            objectCount = queryObjectCount()
         end
-        assert(serverCount == api.ExpectedServerCount, string.format("Server count mismatch: expected %d, got %d. Run diagnose before saving.", api.ExpectedServerCount, serverCount))
+        assert(objectCount == api.ExpectedObjectCount, string.format("Object count mismatch: expected %d, got %d. Run diagnose before saving.", api.ExpectedObjectCount, objectCount))
     end)
     if connection then connection:Disconnect() end
     if streamConnection then streamConnection:Disconnect() end
@@ -652,7 +680,8 @@ function api.Build()
     api.State = not ok and "unconfirmed" or (api.NextIndex > #PLAN and "complete" or "paused")
     api.Phase = api.State
     if not ok then error(reason, 0) end
-    status(api.State == "complete" and string.format("Complete: %d track parts; %d server objects verified. Save through the game's build-slot UI.", #PLAN, api.ServerCount) or string.format("Paused at %d / %d; server objects=%d; Build / Resume continues", api.NextIndex - 1, #PLAN, api.ServerCount))
+    local countDetail = CONFIG.ObjectCountMode == "server" and (api.ServerCount .. " server objects verified") or (trackedCount .. " objects tracked; owner verification required")
+    status(api.State == "complete" and string.format("Complete: %d track parts; %s. Save through the owner's build-slot UI.", #PLAN, countDetail) or string.format("Paused at %d / %d; %s; Build / Resume continues", api.NextIndex - 1, #PLAN, countDetail))
 end
 function api.Repair()
     assert(not busy and not previewing, "Pause the build before repairing")
@@ -664,7 +693,7 @@ function api.Repair()
     restoredCheckpoint = nil
     repairing = true
     owners, uuidOwners, api.Placed = {}, {}, {}
-    api.NextIndex, api.SentCount, api.ReusedCount, api.ExpectedServerCount = 1, 0, 0, nil
+    api.NextIndex, api.SentCount, api.ReusedCount, api.ExpectedObjectCount = 1, 0, 0, nil
     status("Repair: inspecting every track part at the original transform; only missing parts will be placed")
     return api.Build()
 end
@@ -682,7 +711,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -24, 0, 40)
 title.Position = UDim2.fromOffset(12, 4)
 title.BackgroundTransparency = 1
-title.Text = "RED BULL RING BUILDER"
+title.Text = "SUZUKA BUILDER"
 title.TextColor3 = Color3.fromRGB(240, 240, 240)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18

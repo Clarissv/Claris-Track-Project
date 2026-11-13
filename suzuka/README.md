@@ -1,5 +1,8 @@
 # Suzuka with connected asphalt ramps
 
+For a smaller climb from spawn to the spectator side opposite the pit, use
+the [lower version with a spawn exit ramp](low-spawn/README.md).
+
 **8,960 placed Parts; 8,961 including your original grass plate.** This is a
 Jakarta builder using the supplied Suzuka 2001 GLB, with the database CSV
 aligned to its road surface. It includes a straight main straight, a clean
@@ -107,6 +110,34 @@ Save the partial game build before leaving. After rejoining, load that matching
 saved slot, then paste `suzuka-resume.lua`. Use `_G.SuzukaBuilder` for configuration
 and `_G.SuzukaBuilder.SurfaceReport()` for measured road confirmation errors.
 Other circuits keep their own globals and checkpoint files.
+
+### Building as a moderator in your friend's server
+
+Moderator Build Tools access may work while `BuildSaver("GetPlacedAmount")`
+returns no count. The default builder stops before placing anything if this
+save-interface query fails.
+
+For a **fresh server with only the original grass plate**, extract the updated
+`suzuka-executor.zip` into the executor workspace and paste
+`suzuka-moderator-run.lua`. Inspect, Preview, then Build. Alternatively, after
+loading the updated builder, run:
+
+```lua
+_G.SuzukaBuilder.UseModeratorCount(1)
+```
+
+This uses one known existing object and adds each confirmed new placement.
+It retains object limits, placement checks and protection against duplicate
+requests. The panel labels the total as tracked, requiring owner verification.
+Streaming can hide objects, so local folder size cannot verify the complete
+server count. Other players must leave the build unchanged during this mode.
+Unrelated additions or deletions can invalidate the estimate.
+
+If the server contains other objects, obtain its current count from the owner
+and supply that value instead of `1`. After rejoining and loading a checkpoint,
+supply the current count of the loaded saved build again before resuming.
+The owner must verify the total and save through the normal build-slot UI.
+Moderator access does not grant saving or Build Tools Plus.
 
 ## GitHub loader after publishing
 

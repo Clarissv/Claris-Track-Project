@@ -10,6 +10,11 @@ line("State=" .. tostring(api.State) .. "; next part=" .. tostring(api.NextIndex
 line("Map=Jakarta; place=" .. tostring(game.PlaceId) .. "; confirmed save limit=" .. tostring(api.Config.SaveObjectLimit or "unknown"))
 if api.Phase then line("Stage=" .. tostring(api.Phase)) end
 line("Loaded EditableBuilds children=" .. #folder:GetChildren())
+local expectedCount = api.ExpectedObjectCount or api.ExpectedServerCount
+if api.Config.ObjectCountMode == "moderator" and api.VerifyObjectCount then
+    local ok, report = pcall(api.VerifyObjectCount)
+    line(ok and ("Moderator tracked total=" .. report.objectCount .. "; owner verification required") or ("Moderator count check failed: " .. tostring(report)))
+end
 local storage = game:GetService("ReplicatedStorage")
 local container = storage:FindFirstChild("NetworkContainer")
 local functions = container and container:FindFirstChild("RemoteFunctions")
@@ -20,8 +25,8 @@ if saver then
     local deadline = os.clock() + 12
     repeat task.wait(0.05) until done or os.clock() >= deadline
     if done and ok and type(count) == "number" then
-        line("Server objects reported to save UI=" .. count .. "; expected=" .. tostring(api.ExpectedServerCount or "not tracked by this builder"))
-        if api.ExpectedServerCount and count ~= api.ExpectedServerCount then line("COUNT MISMATCH: inspect before saving or resuming") end
+        line("Server objects reported to save UI=" .. count .. "; expected=" .. tostring(expectedCount or "not tracked by this builder"))
+        if expectedCount and count ~= expectedCount then line("COUNT MISMATCH: inspect before saving or resuming") end
     else line("Server count query failed or timed out: " .. tostring(count)) end
 end
 line("Plan parts=" .. api.Count .. "; confirmed indices=" .. (api.NextIndex-1) .. "; newly placed=" .. tostring(api.SentCount or "unknown") .. "; reused=" .. tostring(api.ReusedCount or "unknown"))

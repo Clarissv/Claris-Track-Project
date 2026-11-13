@@ -1,0 +1,11 @@
+{
+  "parts": 8301,
+  "totalWithGrass": 8302,
+  "pitBeforeStuds": 92.62195797704408,
+  "pitAfterStuds": 12.148306295397695,
+  "crossoverClearanceStuds": 22.313934262572655,
+  "spawnRampSamples": 9790,
+  "maxRampStepStuds": 0.04386606599592824,
+  "maxRampEndJoinStuds": 0.008738210759128506,
+  "maximumRampSlope": 0.08648512436638632
+}

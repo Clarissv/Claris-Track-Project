@@ -1,7 +1,7 @@
 -- Elevated Suzuka circuit loader for Jakarta. Opens the builder panel; preview before building.
 local mode = ...
 assert(mode == nil or mode == "build" or mode == "resume" or mode == "checkpoint" or mode == "diagnose", "Suzuka: expected build, resume, checkpoint or diagnose")
-local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/suzuka/releases/4254ef77abc3164595f0/"
+local BASE = "https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/suzuka/releases/4e894308f7d6824bfb5a/"
 local CHECKPOINT = "suzuka-jakarta-checkpoint.json"
 local function download(name)
     local url = BASE .. name
