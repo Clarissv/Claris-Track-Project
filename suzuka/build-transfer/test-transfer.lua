@@ -678,6 +678,124 @@ end
 api.Copy();onStream=nil;onWait=nil;countOverride=nil
 check(waited and api.State=="copied" and backupDocument().backupId==backupId,"Resumed close pit recovery captures delayed building geometry at another height")
 end
+do
+-- Reproduce the remaining live failure: every stream request replaces all
+-- Instance references, including roots with runtime folders and a scaled Model.
+clear();game.JobId="source-replacement-speed";root.CFrame=cf(0,5,0)
+local populationCount=1024
+local function populate()
+    clear()
+    for i=1,populationCount do
+        local object=duplicateTemplate(block,"replacement-"..i,cf(i*0.25,0,0),v(4,4,4))
+        child(object,"Folder","RuntimeContainer");object.Parent=builds
+    end
+    duplicateTemplate(building,"guid-building",cf(40,0,0),2).Parent=builds
+end
+populate();countOverride=function()return populationCount+2 end;api=load();api.Scan()
+local sampleStart=api.Metrics.samples;local visits,discoverySamples=0
+local hidden=duplicateTemplate(block,"guid-block",cf(80,0,0),v(2,2,2))
+onStream=function()
+    visits=visits+1;populate()
+    if visits==12 then
+        discoverySamples=api.Metrics.samples-sampleStart
+        check(api.ScanProgress.reused==populationCount+1 and api.ScanProgress.sampled==0,"Replaced references reuse visible geometry and appearance")
+        hidden.Parent=builds;onStream=nil
+    end
+end
+api.Copy();onStream=nil;countOverride=nil
+check(discoverySamples==0 and api.Metrics.identityHits>=(populationCount+1)*11,"Repeated full re-streaming avoids geometry sampling and catalog lookup")
+check(api.State=="copied" and #backupDocument().records==populationCount+2 and api.ScanProgress.full,"Replaced roots and new objects pass final full validation")
+end
+do
+-- Saved simple Part images preload stable reuse after a helper reload, even
+-- when every live reference has been replaced and no old Instance is available.
+clear();game.JobId="source-identity-reload";root.CFrame=cf(0,5,0)
+local function populate()
+    clear()
+    for i=1,96 do
+        local object=duplicateTemplate(block,"reload-"..i,cf(i*0.5,0,0),v(4,4,4))
+        child(object,"Folder","RuntimeContainer");object.Parent=builds
+    end
+end
+populate();countOverride=function()return 97 end;api=load();api.Scan()
+local backupId=draftDocument().backupId;populate();api=load()
+onStream=function()
+    check(api.Metrics.samples==0 and api.Metrics.identityHits>=96,"Reload preloads verified Part snapshots from the existing draft")
+    duplicateTemplate(block,"guid-block",cf(10,0,0),v(2,2,2)).Parent=builds;onStream=nil
+end
+api.Copy();onStream=nil;countOverride=nil
+check(api.State=="copied" and backupDocument().backupId==backupId,"Stable reuse resumes the same capture without starting over")
+end
+do
+-- Child appearance changes after re-streaming cannot hide behind an earlier
+-- complete Model snapshot when the final visible geometry no longer validates.
+clear();game.JobId="source-replacement-model-edit";root.CFrame=cf(0,5,0)
+duplicateTemplate(building,"guid-building",cf(),1).Parent=builds
+countOverride=function()return 2 end;api=load();api.Scan()
+local priorBackup=files["jakarta-build-backup.json"]
+onStream=function()
+    clear()
+    local changed=duplicateTemplate(building,"guid-building",cf(),1)
+    changed:FindFirstChild("Roof").Color=rgb(0.7,0.3,0.1);changed.Parent=builds
+    duplicateTemplate(block,"guid-block",cf(10,0,0),v(4,4,4)).Parent=builds;onStream=nil
+end
+fails(api.Copy,"Source object changed");onStream=nil;countOverride=nil
+check(files["jakarta-build-backup.json"]==priorBackup,"Changed re-streamed Model cannot replace the verified backup")
+end
+do
+-- A long connected route keeps discovering objects after filling a small queue.
+-- Compacting only completed visits preserves counters, dedupe and resume state.
+clear();game.JobId="source-queue-compaction";root.CFrame=cf(0,5,0)
+local roadCount=42;local roads={}
+for i=1,roadCount do roads[i]=duplicateTemplate(block,"long-road-"..i,cf((i-1)*128,0,0),v(200,1,32))end
+roads[1].Parent=builds;countOverride=function()return roadCount end
+local requests={};local pausedPoint;local pausedOnce=false
+local function stream(position)
+    local key=position.X..":"..position.Y..":"..position.Z
+    assert(not requests[key] or key==pausedPoint,"A completed compacted point was revisited")
+    requests[key]=true
+    for _,road in ipairs(roads)do if (position-road.Position).Magnitude<100 then road.Parent=builds end end
+    if (api.Metrics.compactions or 0)>=2 and not pausedOnce then pausedOnce=true;pausedPoint=key;api.Pause()end
+end
+api=load();api.Config.MaxTiles=80;api.Config.StallAreas=128;api.Config.StallSeconds=300
+onStream=stream;api.Copy();onStream=nil
+local compactDraft=draftDocument();local visitedBefore=api.Report().tilesVisited
+check(api.State=="paused" and compactDraft.scan.visitedBase>0 and #compactDraft.scan.queue<=80,"Compaction frees completed queue slots and saves bounded pending work")
+check(#compactDraft.scan.visitedKeys==compactDraft.scan.visitedBase and visitedBefore>=compactDraft.scan.visitedBase,"Compacted visit counters and dedupe keys persist together")
+api=load();api.Config.MaxTiles=80;api.Config.StallAreas=128;api.Config.StallSeconds=300
+onStream=stream;api.Copy();onStream=nil;countOverride=nil
+check(api.State=="copied" and #backupDocument().records==roadCount,"Compacted route resumes and reaches every connected road section")
+check(api.Report().tilesVisited>=visitedBefore and (api.Metrics.compactions or 0)>0,"Resumed compaction retains cumulative progress")
+end
+do
+-- Quiet recovery visits yield to the remaining track instead of stopping with
+-- reachable objects still queued. This also holds for an older recovery draft.
+clear();game.JobId="source-recovery-track-yield";root.CFrame=cf(0,5,0);wideGrass.Parent=builds
+countOverride=function()return 2 end;api=load();api.Scan()
+local recoveryDraft=draftDocument();recoveryDraft.scan.queue={};recoveryDraft.scan.nextTile=1
+recoveryDraft.scan.recovery={id="test-pit-pass",points=60,checked=0}
+for i=1,60 do recoveryDraft.scan.queue[i]={x=0,z=0,y=5,px=i,pz=0,key="fine:test:recovery:"..i,fine=true,focused=true,recovery="test-pit-pass"}end
+recoveryDraft.scan.queue[61]={x=26,z=0,y=5,px=5000,pz=0,key="fine:test:track",fine=true,track=true}
+rewriteBackup(recoveryDraft,"jakarta-build-draft.json");api=load();api.Config.StallAreas=4
+local visits=0
+onStream=function(position)
+    visits=visits+1
+    if position.X==5000 then duplicateTemplate(block,"guid-block",cf(5000,5,0),v(4,4,4)).Parent=builds;onStream=nil end
+end
+api.Copy();onStream=nil;countOverride=nil
+check(visits==9 and api.State=="copied" and api.Report().recovery.deferred,"Unproductive pit recovery continues pending track work")
+clear();game.JobId="source-recovery-track-reload";wideGrass.Parent=builds
+recoveryDraft.source.jobId=game.JobId;recoveryDraft.backupId="resumed-recovery-test"
+recoveryDraft.scan.recovery.checked=48;rewriteBackup(recoveryDraft,"jakarta-build-draft.json")
+countOverride=function()return 2 end;api=load();visits=0
+onStream=function(position)
+    visits=visits+1
+    assert(position.X==5000,"Resumed recovery selected the quiet pit before the track")
+    duplicateTemplate(block,"guid-block",cf(5000,5,0),v(4,4,4)).Parent=builds;onStream=nil
+end
+api.Copy();onStream=nil;countOverride=nil
+check(visits==1 and api.State=="copied","Reloaded quiet recovery immediately resumes the unvisited track")
+end
 -- Loader URLs and execution modes actually select the correct entry point.
 local requestedModes={}
 function game:HttpGet(url)check(url=="https://raw.githubusercontent.com/Clarissv/Claris-Track-Project/main/suzuka/build-transfer/transfer.lua","Loader URL");return "return function() end" end

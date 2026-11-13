@@ -1,0 +1,55 @@
+{
+  "format": "spa-github-release-v1",
+  "version": "a3724b2e39350d084997",
+  "partCount": 98,
+  "totalWithExistingGrass": 99,
+  "combinedObjects": 8617,
+  "requiredBase": "adce2e0c3ccec9c8b4cd",
+  "files": [
+    {
+      "path": "releases/a3724b2e39350d084997/spa-builder.lua",
+      "bytes": 70281,
+      "sha256": "6eb415d139d1e56ad69c9979591175823858f9e97d91cee6d33dbdaf4b2787a2"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/runtime-plan.json",
+      "bytes": 13604,
+      "sha256": "c4f042b92e6f5aa994501033eecfcab13001fa483f991f5ea343e4dc316dcb0a"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/spa-save.lua",
+      "bytes": 6120,
+      "sha256": "575a519ee4bd247c44108ce16d145718a1fe46d01e422c00093e97dd086a9cae"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/spa-checkpoint.lua",
+      "bytes": 2989,
+      "sha256": "1e7b598c24be6a232a9b6c17b931f72759dad7809e34e3c09312cc1e4bf618b6"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/spa-diagnose.lua",
+      "bytes": 5168,
+      "sha256": "38cad6cac1aaa2d815d1b1badbbc69d24a5083a1aec00758c01313e2589764d1"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/spa-continue.lua",
+      "bytes": 4844,
+      "sha256": "df13ff2298d66b087d7de00ea5f5a06553f5de1a72a2b11a0e65b60e0098c583"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/build-all-template.luau",
+      "bytes": 6606,
+      "sha256": "0f995a7c589340024f3e5084596b3d70fed0748c6eb73d11ca5b8113f7636c9b"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/loader.lua",
+      "bytes": 2653,
+      "sha256": "a2fb87a93ca032a23124cbcff2097664f4d6fd60fec04847b2103ab13ac0209f"
+    },
+    {
+      "path": "releases/a3724b2e39350d084997/build-all.lua",
+      "bytes": 6779,
+      "sha256": "dff0c194eaca506537517fc747de719b71a24819aa05849df07b7ef1e32666b2"
+    }
+  ]
+}

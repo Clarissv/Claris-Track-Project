@@ -1,0 +1,16 @@
+Horizontal route and widths: TUMFTM/racetrack-database
+https://github.com/TUMFTM/racetrack-database
+Suzuka.csv is LGPLv3; the license is included as source/LICENSE.
+Database snapshot supplied by the existing local project.
+
+Road elevations, kerb/runoff traces and ground: user-supplied
+suzukibananini.glb, named Suzuka 2001.
+SHA256 84bc891c1cd5a895131031d037629ecdb16aef980a1b311f6043db6ecab88a19.
+The model's node transforms are applied, including its Z-up conversion.
+Original model authorship/license was not supplied with the local GLB.
+The GLB, original textures and archive are excluded from the prepared package.
+Frozen numeric references and block geometry are adaptations.
+
+Geometry, ramp fitting and runtime helpers are adapted from this project's
+Monza, Sepang and Red Bull Ring builders. The exported game client is not
+redistributed. This uses the existing Jakarta placement contract.

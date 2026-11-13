@@ -25,11 +25,12 @@ local config = {
 }
 if old and old.Config and type(old.Config.FpsMode) == "boolean" then config.FpsMode = old.Config.FpsMode end
 for k, v in pairs(options.Config or {}) do assert(config[k] ~= nil, "Unknown setting: " .. k); config[k] = v end
-local api = {Config = config, Version = "2026-11-12-discovery", State = "ready", Busy = false, Paused = false}
+local api = {Config = config, Version = "2026-11-12-identity", State = "ready", Busy = false, Paused = false}
 _G.JakartaTransfer = api
 local statusLabel, screen, follower, capture, catalog, pending, freshCapture, fpsButton, fpsSession, pauseKey
-api.Metrics = {yields = 0, samples = 0, cacheHits = 0, discoveryHits = 0, catalogChecks = 0}
+api.Metrics = {yields = 0, samples = 0, cacheHits = 0, discoveryHits = 0, identityHits = 0, catalogChecks = 0}
 local observed = setmetatable({}, {__mode = "k"})
+local stableRecords = {}
 local workUnits, lastYield = 0, os.clock()
 local function breathe(units)
     workUnits = workUnits + (units or 1)
@@ -489,11 +490,28 @@ local function rawKey(object)
     local size = model and numberKey(object:GetScale()) or arrayKey(vec(object.Size))
     return object.ClassName .. ":" .. object.Name .. ":" .. arrayKey(frame(cf)) .. ":" .. size
 end
+local function compactVisited()
+    local count = capture.nextTile - 1
+    if count == 0 then return end
+    capture.visitedKeys = capture.visitedKeys or {}
+    for i = 1, count do
+        breathe(0)
+        local tile = capture.queue[i]
+        capture.visitedKeys[#capture.visitedKeys + 1] = tile.key or (tile.x .. ":" .. tile.z)
+    end
+    local pending = {}
+    for i = capture.nextTile, #capture.queue do pending[#pending + 1] = capture.queue[i] end
+    capture.queue, capture.nextTile = pending, 1
+    capture.visitedBase = (capture.visitedBase or 0) + count
+    -- Keep queued keys for visited positions, so compacting cannot reseed them.
+    api.Metrics.compactions = (api.Metrics.compactions or 0) + 1
+end
 local function enqueue(position, route)
     local step = capture.step
     local x, z = math.floor(position.X / step), math.floor(position.Z / step)
     local key = x .. ":" .. z
     if capture.queued[key] then return end
+    if #capture.queue >= config.MaxTiles then compactVisited() end
     assert(#capture.queue < config.MaxTiles, "Scan reached MaxTiles; finish by walking to the missing area and using Scan nearby")
     capture.queued[key] = true
     capture.queue[#capture.queue + 1] = {x = x, z = z, y = position.Y, route = route, px = route and position.X or nil, pz = route and position.Z or nil}
@@ -503,6 +521,7 @@ local function seedFootprint(cf, size)
     -- Exact centres reach small streamed roots that can be missed by the
     -- diagonal offset from a grid centre. Reserve room for close pit recovery.
     local reserve = math.min(512, math.floor(config.MaxTiles / 4))
+    if #capture.queue >= config.MaxTiles - reserve then compactVisited() end
     if #capture.queue >= config.MaxTiles - reserve then return end
     local anchorKey = "fine:anchor:" .. math.floor(cf.X / 32) .. ":" .. math.floor(cf.Y / 32) .. ":" .. math.floor(cf.Z / 32)
     if not capture.queued[anchorKey] then
@@ -523,6 +542,7 @@ local function seedFootprint(cf, size)
         for z = math.floor((cf.Z - radiusZ - 64) / 64), math.floor((cf.Z + radiusZ + 64) / 64) do
             for _, py in ipairs(levels) do
                 breathe(0)
+                if #capture.queue >= config.MaxTiles - reserve then compactVisited() end
                 if #capture.queue >= config.MaxTiles - reserve then return end
                 local px, pz = (x + 0.5) * 64, (z + 0.5) * 64
                 local localPoint = (inverse * CFrame.new(px, py, pz)).Position
@@ -576,6 +596,7 @@ local function restrictTrackQueue()
         else removed = removed + 1 end
     end
     capture.queue, capture.queued = kept, {}
+    for _, key in ipairs(capture.visitedKeys or {}) do capture.queued[key] = true end
     for _, tile in ipairs(kept) do capture.queued[tile.key or (tile.x .. ":" .. tile.z)] = true end
     capture.removedBounds = (capture.removedBounds or 0) + removed
 end
@@ -638,6 +659,40 @@ local function recordKey(record)
     if not recordKeys[record] then recordKeys[record] = imageKey(record.image) end
     return recordKeys[record]
 end
+local function stateStamp(p)
+    return table.concat({p.class, p.shape, p.mesh, arrayKey(p.color), p.material, p.variant, numberKey(p.transparency), numberKey(p.reflectance), tostring(p.collide), tostring(p.anchored), tostring(p.customPhysics), arrayKey(p.physics)}, ":")
+end
+local function partStamp(part)
+    local physics = part.CustomPhysicalProperties
+    return stateStamp({class = part.ClassName, shape = part:IsA("Part") and enumName(part.Shape) or "", mesh = meshInfo(part), color = color(part.Color), material = enumName(part.Material), variant = part.MaterialVariant or "", transparency = part.Transparency, reflectance = part.Reflectance, collide = part.CanCollide, anchored = part.Anchored, customPhysics = physics ~= nil, physics = physics and {physics.Density, physics.Friction, physics.Elasticity, physics.FrictionWeight, physics.ElasticityWeight} or {}})
+end
+local function stableStamp(object)
+    -- Runtime folders and executor wrappers can change Instance references on
+    -- every stream request. Compare stable identity and visible properties,
+    -- without normalizing geometry or repeating catalog resolution.
+    local children = {}
+    for _, child in ipairs(object:GetDescendants()) do
+        breathe(0)
+        if child:IsA("BasePart") then
+            children[#children + 1] = "part:" .. arrayKey(frame(child.CFrame)) .. ":" .. arrayKey(vec(child.Size)) .. ":" .. partStamp(child)
+        elseif child:IsA("Decal") or child:IsA("Texture") then
+            children[#children + 1] = "visual:" .. child.ClassName .. ":" .. child.Texture .. ":" .. enumName(child.Face) .. ":" .. arrayKey(color(child.Color3)) .. ":" .. numberKey(child.Transparency)
+        end
+    end
+    table.sort(children)
+    return (object:IsA("BasePart") and "root:" .. partStamp(object) or "model") .. "|" .. table.concat(children, "|")
+end
+local function rememberStable(key, stamp, record)
+    if record.error then return end
+    stableRecords[key] = stableRecords[key] or {}
+    stableRecords[key][stamp] = record
+end
+local function preloadStable(record)
+    local image = record.image
+    if not record.error and image and image.kind == "Part" and #image.parts == 1 and #image.visuals == 0 then
+        rememberStable(record.sourceKey, tostring(config.CatalogMap[record.sourceName] or "") .. "|root:" .. stateStamp(image.parts[1]) .. "|", record)
+    end
+end
 local function updateGroup(group)
     local complete = 0
     for _, records in pairs(group.complete) do complete = complete + #records end
@@ -649,7 +704,7 @@ end
 local function captureNearby(full, verifySource)
     assert(capture and capture.jobId == game.JobId, "Start Copy in this source server first")
     full = full ~= false
-    local localGroups, changed = {}, {}
+    local localGroups, changed, localCounts = {}, {}, {}
     local finished = true
     local objects = buildFolder():GetChildren()
     local lastScanStatus = os.clock()
@@ -661,23 +716,49 @@ local function captureNearby(full, verifySource)
         breathe(full and 1 or 0)
         if api.Busy and api.Paused then finished = false; break end
         local previous = observed[object]
-        local record
+        local record, identity, stamp, reused
         if not full and previous and not previous.error then
             record = previous
-            api.Metrics.discoveryHits = api.Metrics.discoveryHits + 1
-            api.ScanProgress.reused = api.ScanProgress.reused + 1
+            reused = true
         else
-            record = captureObject(object)
+            identity = rawKey(object)
+            stamp = tostring(config.CatalogMap[object.Name] or "") .. "|" .. stableStamp(object)
+            local bucket = stableRecords[identity]
+            local matching = bucket and bucket[stamp]
+            if not full and matching then
+                record, reused = matching, true
+                api.Metrics.identityHits = api.Metrics.identityHits + 1
+            else
+                if (not previous or previous.error) and bucket then for _, candidate in pairs(bucket) do previous = candidate; break end end
+                record = captureObject(object)
+                changed[record.sourceKey] = true
+                api.ScanProgress.sampled = api.ScanProgress.sampled + 1
+            end
             if verifySource and previous and not previous.error then
                 local complete = record.image and #record.image.parts >= #previous.image.parts
-                assert(not complete or not record.error and recordKey(record) == recordKey(previous), "Source object changed during copying; stop editing and use NewCopy. Draft preserved.")
+                local same = not record.error and recordKey(record) == recordKey(previous)
+                if not same and bucket then
+                    for _, candidate in pairs(bucket) do if not record.error and recordKey(record) == recordKey(candidate) then same = true; break end end
+                end
+                assert(not complete or same, "Source object changed during copying; stop editing and use NewCopy. Draft preserved.")
                 assert(record.image, "Source object no longer validates; draft preserved")
             end
             observed[object] = record
-            api.ScanProgress.sampled = api.ScanProgress.sampled + 1
+            rememberStable(identity, stamp, record)
+        end
+        if reused then
+            api.Metrics.discoveryHits = api.Metrics.discoveryHits + 1
+            api.ScanProgress.reused = api.ScanProgress.reused + 1
         end
         local key = record.sourceKey
-        if full or record ~= previous or record.error then changed[key] = true end
+        if full or record.error or not capture.groups[key] then changed[key] = true end
+        if not record.error then
+            local fingerprint = recordKey(record)
+            localCounts[key] = localCounts[key] or {}
+            localCounts[key][fingerprint] = (localCounts[key][fingerprint] or 0) + 1
+            local group = capture.groups[key]
+            if not group or localCounts[key][fingerprint] > #(group.complete[fingerprint] or {}) then changed[key] = true end
+        end
         localGroups[key] = localGroups[key] or {}
         localGroups[key][#localGroups[key] + 1] = record
         api.ScanProgress.checked = index
@@ -748,14 +829,14 @@ local function captureReport(includeExamples)
             end
         end
     end
-    return {version = api.Version, scanMode = config.ScanMode, removedBounds = capture.removedBounds or 0, captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = capture.nextTile - 1, tilesQueued = #capture.queue, focus = capture.focus, recovery = capture.recovery, idleAreas = capture.idleAreas or 0, scan = api.ScanProgress, noClip = api.NoClipActive == true, metrics = api.Metrics}
+    return {version = api.Version, scanMode = config.ScanMode, removedBounds = capture.removedBounds or 0, captured = capture.total or 0, expected = capture.expected, unresolved = capture.unresolved or 0, examples = errors, tilesVisited = (capture.visitedBase or 0) + capture.nextTile - 1, tilesQueued = (capture.visitedBase or 0) + #capture.queue, focus = capture.focus, recovery = capture.recovery, idleAreas = capture.idleAreas or 0, scan = api.ScanProgress, noClip = api.NoClipActive == true, metrics = api.Metrics}
 end
 local function copyDocument(complete)
     return {
         format = "jakarta-build-v1", backupId = capture.id, complete = complete,
         source = {placeId = game.PlaceId, jobId = capture.jobId, userId = player.UserId, createdAt = capture.createdAt, expectedCount = capture.expected},
         records = capturedRecords(), report = captureReport(),
-        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile, focus = capture.focus, lastVisit = capture.lastVisit, mode = config.ScanMode, recovery = capture.recovery} or nil,
+        scan = not complete and {step = capture.step, queue = capture.queue, nextTile = capture.nextTile, focus = capture.focus, lastVisit = capture.lastVisit, mode = config.ScanMode, recovery = capture.recovery, visitedBase = capture.visitedBase, visitedKeys = capture.visitedKeys} or nil,
     }
 end
 local function saveDraft()
@@ -777,6 +858,9 @@ local function restoreDraft()
     assert(type(scan.queue) == "table" and #scan.queue <= config.MaxTiles and finite(scan.nextTile) and scan.nextTile % 1 == 0 and scan.nextTile >= 1 and scan.nextTile <= #scan.queue + 1, "Invalid draft scan")
     assert(type(document.backupId) == "string" and finite(document.source.expectedCount) and document.source.expectedCount >= 0 and type(document.records) == "table", "Invalid draft metadata")
     local recovered = {id = document.backupId, jobId = game.JobId, createdAt = document.source.createdAt, expected = document.source.expectedCount, step = scan.step, queue = scan.queue, nextTile = scan.nextTile, focus = scan.focus, lastVisit = scan.lastVisit, groups = {}, queued = {}}
+    recovered.visitedBase, recovered.visitedKeys = scan.visitedBase or 0, scan.visitedKeys or {}
+    assert(finite(recovered.visitedBase) and recovered.visitedBase % 1 == 0 and recovered.visitedBase >= 0 and recovered.visitedBase <= 200000 and type(recovered.visitedKeys) == "table" and #recovered.visitedKeys == recovered.visitedBase, "Invalid draft visited history")
+    for _, key in ipairs(recovered.visitedKeys) do assert(type(key) == "string", "Invalid visited scan key"); recovered.queued[key] = true end
     if recovered.focus then
         assert(type(recovered.focus) == "table" and #recovered.focus == 3, "Invalid draft focus")
         for _, n in ipairs(recovered.focus) do assert(finite(n), "Invalid draft focus coordinate") end
@@ -817,7 +901,7 @@ local function restoreDraft()
     capture = recovered
     restrictTrackQueue()
     for _, group in pairs(capture.groups) do breathe(); updateGroup(group) end
-    for _, record in ipairs(document.records) do breathe(); seedFineTrack(record.image) end
+    for _, record in ipairs(document.records) do breathe(); preloadStable(record); seedFineTrack(record.image) end
     status("Resumed local draft from this source server")
     return true
 end
@@ -826,6 +910,7 @@ local function startCapture()
     if restoreDraft() then return end
     freshCapture = nil
     observed = setmetatable({}, {__mode = "k"})
+    stableRecords = {}
     capture = {id = http:GenerateGUID(false), jobId = game.JobId, createdAt = os.time(), expected = serverCount(), groups = {}, queue = {}, queued = {}, nextTile = 1, step = config.GridStep}
     -- Prioritize the whole known circuit if its builder is still in memory.
     local builder = _G.SuzukaBuilder
@@ -883,6 +968,7 @@ local function addFocus(position, radius, step, heights, recovery)
             end
         end
     end
+    if #capture.queue + #points > config.MaxTiles then compactVisited() end
     assert(#capture.queue + #points <= config.MaxTiles, "Focus area exceeds MaxTiles; use a smaller focus radius")
     for _, point in ipairs(points) do capture.queue[#capture.queue + 1] = point; capture.queued[point.key] = true end
     capture.lastVisit = vec(position)
@@ -918,7 +1004,8 @@ local function nextScanTile()
         breathe(0)
         if api.Paused then return end
         local tile = capture.queue[index]
-        local priority = tile.focused and 0 or tile.anchor and 1 or tile.fine and 2 or 3
+        local deferred = tile.recovery and capture.recovery and capture.recovery.deferred
+        local priority = deferred and 4 or tile.focused and 0 or tile.anchor and 1 or tile.fine and 2 or 3
         local px, pz = tile.px or (tile.x + 0.5) * capture.step, tile.pz or (tile.z + 0.5) * capture.step
         local origin = capture.lastVisit or capture.focus
         local squared = origin and ((px - origin[1]) ^ 2 + (pz - origin[3]) ^ 2 + (tile.y - origin[2]) ^ 2) or index
@@ -927,6 +1014,14 @@ local function nextScanTile()
     if not best then return end
     capture.queue[capture.nextTile], capture.queue[best] = capture.queue[best], capture.queue[capture.nextTile]
     return capture.queue[capture.nextTile]
+end
+local function pendingTrack(anchorsOnly)
+    for index = capture.nextTile, #capture.queue do
+        breathe(0)
+        local tile = capture.queue[index]
+        if not tile.recovery and not tile.focused and (tile.track or tile.route or tile.key and tile.key:sub(1, 10) == "fine:auto:") and (not anchorsOnly or tile.anchor) then return true end
+    end
+    return false
 end
 local function finishCopy()
     assert(capture, "Run Copy first")
@@ -987,6 +1082,7 @@ function api.Copy()
         captureNearby(false)
         local lastStatus, lastGrowth, idleAreas, recoveryIdle = os.clock(), os.clock(), 0, 0
         capture.idleAreas = 0
+        if capture.recovery and capture.recovery.checked >= config.StallAreas * 2 and pendingTrack(false) then capture.recovery.deferred = true end
         while not api.Paused do
             local report = captureReport()
             assert(report.captured <= capture.expected, "Captured extra source identities; stop editing and use NewCopy in this source server")
@@ -995,11 +1091,16 @@ function api.Copy()
                 if api.Paused then break end
                 return finishCopy()
             end
-            if config.ScanMode == "track" and capture.focus and not capture.recovery and (idleAreas >= config.StallAreas or os.clock() - lastGrowth >= config.StallSeconds) then
+            if config.ScanMode == "track" and capture.focus and not capture.recovery and (idleAreas >= config.StallAreas or os.clock() - lastGrowth >= config.StallSeconds) and not pendingTrack(true) then
                 recoverPit()
                 idleAreas, lastGrowth = 0, os.clock()
             end
-            assert(recoveryIdle < config.StallAreas * 2, string.format("No new objects after %d close recovery checks: %d / %d captured. Draft preserved. Keep this server open; move to the pit, press Focus here, then Copy / Resume.", recoveryIdle, report.captured, capture.expected))
+            if recoveryIdle >= config.StallAreas * 2 then
+                assert(pendingTrack(false), string.format("No new objects after %d close recovery checks: %d / %d captured. Draft preserved. Keep this server open; move to the missing section, press Focus here, then Copy / Resume.", recoveryIdle, report.captured, capture.expected))
+                capture.recovery.deferred = true
+                recoveryIdle = 0
+                status("Pit pass found no new objects; continuing the remaining track route. Draft retained.")
+            end
             local tile = nextScanTile()
             if not tile and not api.Paused and config.ScanMode == "track" and capture.focus and not capture.recovery then
                 recoverPit()

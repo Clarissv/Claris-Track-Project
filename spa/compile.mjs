@@ -1,0 +1,37 @@
+import fs from 'node:fs';
+import {compileTrack} from './compile-track.mjs';
+import {addTerrain} from './terrain.mjs';
+import {refitRunoff} from '../red-bull-ring/clear-start/compact/refit-runoff.mjs';
+import {carveTerrain,intersectsDomain} from '../red-bull-ring/clear-start/domain.mjs';
+import {boxCorners} from '../red-bull-ring/geometry.mjs';
+import {auditDriving,auditKerbCoverage,auditPitConnections} from '../red-bull-ring/audit-driving.mjs';
+import {auditLowClearance} from '../red-bull-ring/clear-start/compact/audit-low-clearance.mjs';
+import {auditShoulders,auditPitShoulders} from '../red-bull-ring/clear-start/compact/audit-shoulders.mjs';
+import {integrateAprons,auditIntegratedAprons} from './integrated-aprons.mjs';
+const here=new URL('./',import.meta.url),read=n=>JSON.parse(fs.readFileSync(new URL('source/'+n,here)));
+const settings={layoutScale:1,pitWidth:18,heightSigma:35,bankSigma:60,gradedRampLength:20,maxGradientChange:.014,roadTolerance:.12,roadMaxTurnDegrees:3,jointMaxStep:.015,roadMaxPitchChangeDegrees:.12,pitKerbTrimResolutionStuds:.06,pitKerbMerge:true};
+const base=process.argv.includes('--terrain-only')?JSON.parse(fs.readFileSync(new URL('base-plan.json',here))):compileTrack(read('spa-reference.json'),read('spa-features.json'),read('ground-reference.json'),settings,process.argv.includes('--reuse-driving')?JSON.parse(fs.readFileSync(new URL('base-plan.json',here))):null);
+fs.writeFileSync(new URL('base-plan.json',here),JSON.stringify(base));
+console.log('Base',JSON.stringify({parts:base.parts.length,groups:base.meta.groupCounts,roadJoins:base.meta.surfaceSmoothing.roadJoins,pitJoins:base.meta.surfaceSmoothing.pitJoins}));
+if(!base.meta.palette.some(p=>p.name==='yellow'))base.meta.palette.push({name:'yellow',rgb:[223,180,35],material:'SmoothPlastic'});for(const i of base.meta.groups.curbs)if(base.parts[i][6]===4)base.parts[i][6]=10;
+const refit=refitRunoff(base),start=base.parts.length;
+const generated=addTerrain(base,read('ground-reference.json'),{edgeMaxLength:96,outerMaxLength:768,outerTolerance:16,outerMaxTurn:40,outerWidthVariation:32,rootCell:2048,minCell:512,recoveryShoulders:true,pitShoulders:true,pitShoulderWidth:24});
+console.log('With terrain',generated.parts.length);
+const m=generated.meta,pit=m.pitPoints,anchor=pit[Math.floor(pit.length*.5)].pos,dir=m.pitLayout.straightDirection,yaw=Math.atan2(dir[1],dir[0]);let domain;
+for(const side of [-1,1])for(const distance of [300,350,400,450,500,600,700]){const candidate={center:[anchor[0]-dir[1]*distance*side,anchor[2]+dir[0]*distance*side],halfSize:200,guard:.15,yawRadians:yaw,sizeStuds:[400,400],emptyThroughAllHeights:true};if(generated.parts.slice(0,start).every(p=>!intersectsDomain(p,{...candidate,halfSize:280}))){domain=candidate;break;}if(domain)break;}
+if(!domain)throw Error('No clear build starting square beside the Spa pit');
+const plan=structuredClone(generated),mapping=new Map();plan.parts=plan.parts.slice(0,start);
+for(let i=start;i<generated.parts.length;i++){const ids=[];for(const p of carveTerrain(generated.parts[i],domain)){ids.push(plan.parts.length);plan.parts.push(p);}mapping.set(i,ids);}
+const remap=ids=>ids.flatMap(i=>mapping.get(i)??[]),meta=plan.meta;
+meta.variant='clear-start-compact';meta.groups.terrain=plan.parts.slice(start).map((_,i)=>start+i);meta.groupCounts.terrain=meta.groups.terrain.length;meta.partCount=plan.parts.length;
+meta.terrain={...meta.terrain,foundationIndices:remap(meta.terrain.foundationIndices),edgeSpans:meta.terrain.edgeSpans.flatMap(s=>remap([s.index]).map(index=>({...s,index}))),addedParts:meta.groups.terrain.length,totalWithExistingGrass:plan.parts.length+1};
+meta.startDomain=domain;meta.placementAnchor={name:'clear-area',position:[domain.center[0],0,domain.center[1]],roadHeight:0};meta.compactTerrain={settings,drivingSettings:settings,totalObjectTargetExclusive:9500,runoffRefit:refit};
+integrateAprons(plan);
+const corners=plan.parts.flatMap(boxCorners);meta.planBounds={min:[0,1,2].map(k=>corners.reduce((v,p)=>Math.min(v,p[k]),Infinity)),max:[0,1,2].map(k=>corners.reduce((v,p)=>Math.max(v,p[k]),-Infinity))};
+meta.width=meta.planBounds.max[0]-meta.planBounds.min[0];meta.depth=meta.planBounds.max[2]-meta.planBounds.min[2];
+meta.drivingAudit=auditDriving(plan);meta.kerbCoverage=auditKerbCoverage(plan);meta.pitConnections=auditPitConnections(plan);meta.lowClearanceAudit=auditLowClearance(plan);
+meta.shoulderAudit=auditShoulders(plan);meta.runoffTransitionAudit=auditIntegratedAprons(plan);meta.pitShoulderAudit=auditPitShoulders(plan);
+meta.limitations.push('The pit follows the user yellow route, entering at the final chicane and merging after La Source. Paved and gravel aprons share fitted recovery skins. Scenic buildings, spectator furniture, trees and service roads are excluded. Vehicle handling requires in-game testing.');
+if(plan.parts.some(p=>intersectsDomain(p,{...domain,guard:0})))throw Error('Build geometry enters the starting square');
+fs.writeFileSync(new URL('spa-plan.json',here),JSON.stringify(plan));fs.writeFileSync(new URL('generation-report.json',here),JSON.stringify(meta,null,2));
+console.log(JSON.stringify({parts:plan.parts.length,groups:meta.groupCounts,audits:{driving:meta.drivingAudit,pit:meta.pitConnections,car:meta.lowClearanceAudit,shoulders:meta.shoulderAudit,runoff:meta.runoffTransitionAudit,pitShoulder:meta.pitShoulderAudit}},null,2));

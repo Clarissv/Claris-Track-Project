@@ -1,0 +1,6 @@
+compile.log
+base-plan.json
+barriers/generate.log
+extract.log
+lua-test.log
+barriers/lua-test.log
